@@ -1,23 +1,76 @@
 use std::{path::PathBuf, io::Write, error::Error};
 
-use tree_sitter::{Parser, Language, TreeCursor};
+use tree_sitter::{Parser, TreeCursor};
 use clap::Parser as clapParser;
+use tree_sitter_highlight;
+use regex::Regex;
+use lazy_static::lazy_static;
 
-extern "C" { fn tree_sitter_markdown() -> Language; }
+mod generated_lang;
 
-macro_rules! write_format {
-    ($outstream:ident, $text:expr) => {
-        $outstream.write(format!($text).as_bytes())?;
-    };
+// macro_rules! write {
+//     ($outstream:ident, $text:expr) => {
+//         $outstream.write(format!($text).as_bytes())?;
+//     };
+// }
+
+fn to_title_case(s: impl AsRef<str>) -> String {
+    let mut c = s.as_ref().chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().chain(c).collect()
+    }
 }
 
-fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, out: &mut Box<dyn Write>, opts: &Options) -> Result<(), Box<dyn Error>> {
+const HL_NAMES: &[&str] = &[
+    "attribute",
+    "constant",
+    "function.builtin",
+    "function",
+    "keyword",
+    "operator",
+    "property",
+    "punctuation",
+    "punctuation.bracket",
+    "punctuation.delimiter",
+    "string",
+    "string.special",
+    "tag",
+    "type",
+    "type.builtin",
+    "variable",
+    "variable.builtin",
+    "variable.parameter",
+];
+
+fn highlight_code(source: &[u8], lang_name: &str, hl_classes: &[&str]) -> Result<Option<String>, Box<dyn Error>>{
+    let mut tshl = tree_sitter_highlight::Highlighter::new();
+    let lang = generated_lang::language_by_name(lang_name);
+    let highlightscm = generated_lang::highlight_query_by_name(lang_name);
+    if let (Some(lang), Some(query)) = (lang, highlightscm) {
+        let mut config = tree_sitter_highlight::HighlightConfiguration::new(
+            lang,
+            query,
+            "",
+            ""
+        )?;
+        config.configure(HL_NAMES);
+        let hl = tshl.highlight(&config, source, None, |_| None)?;
+        let mut renderer = tree_sitter_highlight::HtmlRenderer::new();
+        renderer.render(hl, source, &|hl| hl_classes[hl.0].as_bytes())?;
+        Ok(Some(String::from_utf8(renderer.html)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, out: &mut Box<dyn Write>, opts: &Options, hl_classes: &[&str]) -> Result<(), Box<dyn Error>> {
     let node = cursor.node();
     let indent = " ".repeat(4*depth);
 
     let recurse_siblings = |cursor: &mut TreeCursor<'b>, out: &mut Box<dyn Write>, depth| {
         loop {
-            to_html(src, cursor, depth, &mut *out, opts)?;
+            to_html(src, cursor, depth, &mut *out, opts, hl_classes)?;
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -34,17 +87,21 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
         Ok::<(), Box<dyn Error>>(())
     };
 
+    lazy_static! {
+        static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}( (?P<title>\w[\w\s]*))?").unwrap();
+    }
+
     match node.kind() {
         "document" => {
             if let Some(tags @ [_, ..]) = opts.wrap_tags.as_deref(){
                 for (i, tag) in tags.iter().enumerate() {
                     let indent = " ".repeat(4*i);
-                    write_format!(out, "{indent}<{tag}>\n");
+                    write!(out, "{indent}<{tag}>\n")?;
                 }
                 recurse(cursor, out, tags.len())?;
                 for (i, tag) in tags.iter().enumerate().rev() {
                     let indent = " ".repeat(4*i);
-                    write_format!(out, "{indent}</{tag}>\n");
+                    write!(out, "{indent}</{tag}>\n")?;
                 }
             } else {
                 recurse(cursor, out, 0)?;
@@ -57,16 +114,16 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
             assert!(cursor.goto_first_child(), "headings' first child is a atx heading marker");
             let tag = &cursor.node().kind()[4..6];
             if node.parent().unwrap().kind() != "document" {
-                out.write(b"\n")?;
+                write!(out, "\n")?;
             }
-            write_format!(out, "{indent}<{tag}>");
+            write!(out, "{indent}<{tag}>")?;
             assert!(cursor.goto_next_sibling(), "headings' second child is content");
-            to_html(src, cursor, depth, out, opts)?;
-            write_format!(out, "</{tag}>\n");
+            to_html(src, cursor, depth, out, opts, hl_classes)?;
+            write!(out, "</{tag}>\n")?;
             cursor.goto_parent();
         },
         "text" => {
-            out.write(node.utf8_text(src).expect("the input source is valid utf8").trim_end().as_bytes())?;
+            write!(out, "{}", node.utf8_text(src).expect("the input source is valid utf8").trim_end())?;
         },
         "paragraph" => {
             // peek to elide if only surrounding one image:
@@ -76,9 +133,9 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
             cursor.goto_parent();
 
             if !is_image || !only_child {
-                write_format!(out, "{indent}<p>");
+                write!(out, "{indent}<p>")?;
                 recurse(cursor, out,  0)?;
-                out.write(if opts.close_all_tags { b"</p>\n" } else { b"\n" })?;
+                write!(out, "{}", if opts.close_all_tags { "</p>\n" } else { "\n" })?;
             }
             else {
                 recurse(cursor, out,  0)?;
@@ -89,11 +146,11 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
             cursor.goto_first_child();
             cursor.goto_next_sibling();
             let link_url = cursor.node().utf8_text(src).expect("the input source is valid utf8");
-            write_format!(out, " <a href=\"{link_url}\">");
+            write!(out, " <a href=\"{link_url}\">")?;
             cursor.goto_parent();
             cursor.goto_first_child();
             recurse(cursor, out,  0)?;
-            out.write(b"</a>")?;
+            write!(out, "</a>")?;
             cursor.goto_parent();
         },
         "image" => {
@@ -101,11 +158,11 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
             let description = cursor.node().utf8_text(src).expect("the input source is valid utf8");
             cursor.goto_next_sibling();
             let image_url = cursor.node().utf8_text(src).expect("the input source is valid utf8");
-            write_format!(out, "{indent}<img src=\"{image_url}\" alt=\"{description}\" />\n");
+            write!(out, "{indent}<img src=\"{image_url}\" alt=\"{description}\" />\n")?;
             cursor.goto_parent();
         },
         "thematic_break" => {
-            write_format!(out, "{indent}<hr />\n\n");
+            write!(out, "{indent}<hr />\n\n")?;
         },
         "tight_list" | "loose_list" => {
             // peek to find out kind of list
@@ -142,35 +199,35 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
 
             let tag = if is_bulleted {"ul"} else {"ol"};
 
-            write_format!(out, "{indent}<{tag}{attributes}>\n");
+            write!(out, "{indent}<{tag}{attributes}>\n")?;
             recurse(cursor, out,  1)?;
-            write_format!(out, "{indent}</{tag}>\n");
+            write!(out, "{indent}</{tag}>\n")?;
         },
         "list_item" | "task_list_item" => {
-            write_format!(out, "{indent}<li>");
+            write!(out, "{indent}<li>")?;
             assert!(cursor.goto_first_child(), "list_items' first child is inline and not empty");
             assert!(cursor.goto_next_sibling(), "list_items' second child is a its content");
             if cursor.node().kind() == "paragraph" {
                 cursor.goto_first_child();
-                to_html(src, cursor, depth, out, opts)?;
+                to_html(src, cursor, depth, out, opts, hl_classes)?;
                 cursor.goto_parent();
             } else {
-                to_html(src, cursor, depth, out, opts)?;
+                to_html(src, cursor, depth, out, opts, hl_classes)?;
             }
-            out.write(if opts.close_all_tags { b"</li>\n" } else { b"\n" })?;
+            write!(out, "{}", if opts.close_all_tags { "</li>\n" } else { "\n" })?;
             cursor.goto_parent();
         },
         "task_list_item_marker" => {
             let is_checked = node.utf8_text(src).unwrap() == "[x]";
             let checked_attr = if is_checked { " checked" } else { "" } ; 
-            write_format!(out, "<input type=\"checkbox\" disabled{checked_attr} />");
+            write!(out, "<input type=\"checkbox\" disabled{checked_attr} />")?;
             assert!(cursor.goto_next_sibling(), "task_list_item_markers are not the end of a task_list_item");
             recurse_siblings(cursor, out, depth)?;
         },
         "list_marker" => {
-            out.write(b" <span class=\"marker\">")?;
+            write!(out, " <span class=\"marker\">")?;
             recurse(cursor, out,  0)?;
-            out.write(b"</span>")?;
+            write!(out, "</span>")?;
         },
         "fenced_code_block" => {
             // peek for info string
@@ -182,47 +239,63 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
                     Some(first_child.utf8_text(src).expect("the input source is valid utf8"))
                 } else {
                     None
-                };
-            let attributes = if let Some(info_string) = info_string {
-                format!(" data-lang=\"{}\"", info_string)
+                }.unwrap_or("");
+            if let Some(caps) = RE_ADMONITION.captures(info_string) {
+                let admonition_class = caps.get(1).unwrap().as_str();
+                let default_title = to_title_case(admonition_class);
+                let admonition_title = caps.get(2).map(|m| m.as_str()).unwrap_or(default_title.as_str());
+                write!(out, "{indent}<div class=\"admonition {admonition_class}\">" )?;
+                write!(out, "{indent}{indent}<div class=\"admonition-title\">{admonition_title}</div>" )?;
+                recurse(cursor, out,  2)?;
+                cursor.goto_parent();
+                write!(out, "{indent}</div>" )?;
             } else {
-                "".into()
-            };
-            write_format!(out, "{indent}<pre><code{attributes}>\n");
-            recurse(cursor, out,  1)?;
-            cursor.goto_parent(); // step back out of the code_block_content
-            write_format!(out, "\n{indent}</code></pre>\n");
+                let attributes = if info_string.is_empty() {
+                    "".into()
+                } else {
+                    format!(" data-lang=\"{}\"", info_string)
+                };
+                write!(out, "{indent}<pre><code{attributes}>\n")?;
+                if let Some(highlighted_code) = highlight_code(&src[cursor.node().start_byte()..cursor.node().end_byte()], info_string, hl_classes).unwrap() {
+                    write!(out, "{}", highlighted_code)?;
+                } else {
+                    println!("no code highlighter found for language: {:?}", info_string);
+                    recurse(cursor, out,  1)?;
+                }
+                cursor.goto_parent(); // step back out of the code_block_content
+                write!(out, "\n{indent}</code></pre>\n")?;
+            }
         },
         "block_quote" => {
-            write_format!(out, "{indent}<blockquote>\n");
+            write!(out, "{indent}<blockquote>\n")?;
             recurse(cursor, out,  1)?;
-            write_format!(out, "{indent}</blockquote>\n");
+            write!(out, "{indent}</blockquote>\n")?;
         },
         "soft_line_break" => {
-            write_format!(out, "\n{indent}<br />\n{indent}");
+            write!(out, "\n{indent}<br />\n{indent}")?;
         },
         "line_break" => {
-            out.write(b"\n")?;
+            write!(out, "\n")?;
         },
         "code_span" => {
-            out.write(b" <code>")?;
+            write!(out, " <code>")?;
             recurse(cursor, out,  0)?;
-            out.write(b"</code>")?;
+            write!(out, "</code>")?;
         },
         "emphasis" => {
-            out.write(b" <em>")?;
+            write!(out, " <em>")?;
             recurse(cursor, out,  0)?;
-            out.write(b"</em>")?;
+            write!(out, "</em>")?;
         },
         "strong_emphasis" => {
-            out.write(b" <strong>")?;
+            write!(out, " <strong>")?;
             recurse(cursor, out,  0)?;
-            out.write(b"</strong>")?;
+            write!(out, "</strong>")?;
         },
         "strikethrough" => {
-            out.write(b" <del>")?;
+            write!(out, " <del>")?;
             recurse(cursor, out,  0)?;
-            out.write(b"</del>")?;
+            write!(out, "</del>")?;
         },
         unhandled => {
             return Err(
@@ -277,12 +350,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-    let md_treesit = unsafe { tree_sitter_markdown() };
-    parser.set_language(md_treesit).unwrap();
+    parser.set_language(generated_lang::language_markdown()).unwrap();
     let tree = parser.parse(source_code.as_slice(), None).unwrap();
     let root_node = tree.root_node();
 
-    to_html(source_code.as_slice(), &mut root_node.walk(), 0, &mut output_writer, &opts)?;
+    let hl_classes = HL_NAMES.iter().map(|s| format!("mdnya-hl-{}", s.replace('.', "-"))).collect::<Vec<_>>();
+    let hl_classes_ref = hl_classes.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+
+    to_html(source_code.as_slice(), &mut root_node.walk(), 0, &mut output_writer, &opts, &hl_classes_ref)?;
 
     Ok(())
 }

@@ -1,4 +1,46 @@
 use std::path::{Path, PathBuf};
+use std::io::Write;
+
+// define a treesit_<languageName> constant for each language
+// also define a String -> Option<Language> map
+fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut lang_rs = std::fs::File::create(PathBuf::from(std::env::var("OUT_DIR")?).join("lang.rs"))?;
+    writeln!(lang_rs, "use tree_sitter::Language;\n")?;
+    let mut highlight_queries = vec![];
+    for lang in &lang_names {
+        let lang_up = lang.to_uppercase();
+        writeln!(lang_rs, "extern \"C\" {{ fn tree_sitter_{lang}() -> Language; }}")?;
+        writeln!(lang_rs, "pub fn language_{lang}() -> Language {{ unsafe {{ tree_sitter_{lang}() }} }}")?;
+        let highlight_query_path = Path::new("langs").join(format!("tree-sitter-{lang}")).join("queries").join("highlights.scm");
+        if highlight_query_path.exists() {
+            let path_string = Path::new("..").join("..").join("..").join("..").join("..").join(highlight_query_path);
+            let path_string = path_string.to_str().unwrap().replace("\\", "\\\\");
+            writeln!(lang_rs, "pub const HIGHLIGHT_QUERY_{lang_up}: &str = include_str!(\"{path_string}\");")?;
+            highlight_queries.push(lang);
+        }
+    }
+
+    writeln!(lang_rs, "pub fn language_by_name(name: &str) -> Option<Language> {{")?;
+    writeln!(lang_rs, "  match name {{")?;
+    for lang in &lang_names {
+        writeln!(lang_rs, "    \"{lang}\" => Some(language_{lang}()),")?;
+    }
+    writeln!(lang_rs, "    _ => None")?;
+    writeln!(lang_rs, "  }}")?;
+    writeln!(lang_rs, "}}")?;
+
+    writeln!(lang_rs, "pub fn highlight_query_by_name(name: &str) -> Option<&str> {{")?;
+    writeln!(lang_rs, "  match name {{")?;
+    for lang in highlight_queries {
+        let lang_up = lang.to_uppercase();
+        writeln!(lang_rs, "    \"{lang}\" => Some(HIGHLIGHT_QUERY_{lang_up}),")?;
+    }
+    writeln!(lang_rs, "    _ => None")?;
+    writeln!(lang_rs, "  }}")?;
+    writeln!(lang_rs, "}}")?;
+
+    Ok(())
+}
 
 fn main() {
 
@@ -6,14 +48,22 @@ fn main() {
         .map(|p| p.unwrap().path())
         .filter(|p| p.is_dir()).collect::<Vec<_>>();
     
-    for lang in lang_paths {
+    for lang in &lang_paths {
         let lang_name = lang.file_name().unwrap().to_str().unwrap();
         let lang_src = ["langs", lang_name, "src"].iter().collect::<PathBuf>();
         println!("cargo:rerun-if-changed={}", lang_src.display());
-        cc::Build::new()
-            .include(&lang_src)
-            .file(lang_src.join("parser.c"))
-            .file(lang_src.join("scanner.cc"))
-            .compile(lang_name);
+        let mut build = cc::Build::new();
+        build.include(&lang_src);
+        build.file(lang_src.join("parser.c"));
+        if lang_src.join("scanner.cc").exists() {
+            build.file(lang_src.join("scanner.cc"));
+        } else {
+            build.file(lang_src.join("scanner.c"));
+        }
+        build.compile(lang_name);
     }
+
+    // tree_sitter_<blank>
+    let langs = lang_paths.iter().map(|p| { p.as_os_str().to_string_lossy().split('-').last().unwrap().to_owned() }).collect::<Vec<_>>();
+    code_gen(langs).unwrap();
 }

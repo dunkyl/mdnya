@@ -45,7 +45,7 @@ List with items far apart:
 
  - Hello  from down here!
 
-```warning
+```{warning}
 The code below will panic!
 ```
 
