@@ -310,6 +310,10 @@ struct Options {
     /// Surround document in tags, such as 'html,body' or article. Comma separated
     #[clap(short, long, name="wrap-tags", value_parser,  value_delimiter = ',')]
     wrap_tags: Option<Vec<String>>,
+
+    /// Show times
+    #[clap(short, long)]
+    verbose: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -340,13 +344,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
     parser.set_language(generated_lang::language_markdown()).unwrap();
+
+    let time_parse_start = std::time::Instant::now();
     let tree = parser.parse(source_code.as_slice(), None).unwrap();
     let root_node = tree.root_node();
+    let parse_elapsed = time_parse_start.elapsed();
+    if opts.verbose {
+        println!("parse time: {:?}", parse_elapsed);
+    }
 
     let hl_classes = HL_NAMES.iter().map(|s| format!("mdnya-hl-{}", s.replace('.', "-"))).collect::<Vec<_>>();
     let hl_classes_ref = hl_classes.iter().map(|s| s.as_str()).collect::<Vec<_>>();
 
+    let time_write_start = std::time::Instant::now();
     to_html(source_code.as_slice(), &mut root_node.walk(), 0, &mut output_writer, &opts, &hl_classes_ref)?;
-
+    let write_elapsed = time_write_start.elapsed();
+    if opts.verbose {
+        println!("write time: {:?}", write_elapsed);
+    }
     Ok(())
 }
