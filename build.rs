@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::io::Write;
 
-// define a treesit_<languageName> constant for each language
-// also define a String -> Option<Language> map
+// define a treesit_<languageName> function for each language
+// also define a String -> Option<Language> function
 fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut lang_rs = std::fs::File::create(PathBuf::from(std::env::var("OUT_DIR")?).join("lang.rs"))?;
     writeln!(lang_rs, "use tree_sitter::Language;\n")?;
@@ -14,7 +14,7 @@ fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         let highlight_query_path = Path::new("langs").join(format!("tree-sitter-{lang}")).join("queries").join("highlights.scm");
         if highlight_query_path.exists() {
             let path_string = Path::new("..").join("..").join("..").join("..").join("..").join(highlight_query_path);
-            let path_string = path_string.to_str().unwrap().replace("\\", "\\\\");
+            let path_string = path_string.to_str().unwrap().replace('\\', "\\\\");
             writeln!(lang_rs, "pub const HIGHLIGHT_QUERY_{lang_up}: &str = include_str!(\"{path_string}\");")?;
             highlight_queries.push(lang);
         }
