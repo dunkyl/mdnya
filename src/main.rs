@@ -117,7 +117,7 @@ fn to_html<'a, 'b, 'c>(src: &[u8], cursor: &mut TreeCursor<'b>, depth: usize, ou
             cursor.goto_parent();
         },
         "text" => {
-            write!(out, "{}", node.utf8_text(src).expect("the input source is valid utf8").trim_end())?;
+            html_escape::encode_text_to_writer(node.utf8_text(src).expect("the input source is valid utf8"), out)?;
         },
         "paragraph" => {
             // peek to elide if only surrounding one image:
