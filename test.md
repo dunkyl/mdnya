@@ -23,6 +23,7 @@ Double underscore looke like __this__.
 With wigglies it looks like ~~this~~.
 
 > Everything you read on the internet is true. 
+>
 > *- Barack Obama*
 
 A list:
@@ -47,6 +48,12 @@ List with items far apart:
 
 ```{warning}
 The code below will panic!
+```
+
+```
+fn main() {
+    panic!("Hello World")
+}
 ```
 
 ```rust

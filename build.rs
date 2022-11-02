@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::io::Write;
 
-// define a treesit_<languageName> function for each language
-// also define a String -> Option<Language> function
+// define a function which at runtime configures the parsers for each language
 fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut lang_rs = std::fs::File::create(PathBuf::from(std::env::var("OUT_DIR")?).join("lang.rs"))?;
     writeln!(lang_rs, "use tree_sitter::Language;\n")?;
+    writeln!(lang_rs, "use std::collections::HashMap;\n")?;
     let mut highlight_queries = vec![];
     for lang in &lang_names {
         let lang_up = lang.to_uppercase();
@@ -20,25 +20,45 @@ fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    writeln!(lang_rs, "pub fn language_by_name(name: &str) -> Option<Language> {{")?;
-    writeln!(lang_rs, "  match name {{")?;
-    for lang in &lang_names {
-        writeln!(lang_rs, "    \"{lang}\" => Some(language_{lang}()),")?;
-    }
-    writeln!(lang_rs, "    _ => None")?;
-    writeln!(lang_rs, "  }}")?;
-    writeln!(lang_rs, "}}")?;
+    writeln!(lang_rs, "
+pub const HL_NAMES: &[&str] = &[
+    \"attribute\",
+    \"constant\",
+    \"function.builtin\",
+    \"function\",
+    \"keyword\",
+    \"operator\",
+    \"property\",
+    \"punctuation\",
+    \"punctuation.bracket\",
+    \"punctuation.delimiter\",
+    \"string\",
+    \"string.special\",
+    \"tag\",
+    \"type\",
+    \"type.builtin\",
+    \"variable\",
+    \"variable.builtin\",
+    \"variable.parameter\",
+];
+    ")?;
 
-    writeln!(lang_rs, "pub fn highlight_query_by_name(name: &str) -> Option<&str> {{")?;
-    writeln!(lang_rs, "  match name {{")?;
+
+    writeln!(lang_rs, "pub fn initialize_configs() -> HashMap<&'static str, tree_sitter_highlight::HighlightConfiguration> {{")?;
+    writeln!(lang_rs, "  let mut configs = HashMap::new();")?;
     for lang in highlight_queries {
         let lang_up = lang.to_uppercase();
-        writeln!(lang_rs, "    \"{lang}\" => Some(HIGHLIGHT_QUERY_{lang_up}),")?;
+        writeln!(lang_rs, "  let mut config_{lang} = tree_sitter_highlight::HighlightConfiguration::new(
+            language_{lang}(),
+            HIGHLIGHT_QUERY_{lang_up},
+            \"\",
+            \"\"
+        ).unwrap();")?;
+        writeln!(lang_rs, "  config_{lang}.configure(HL_NAMES);")?;
+        writeln!(lang_rs, "  configs.insert(\"{lang}\", config_{lang});")?;
     }
-    writeln!(lang_rs, "    _ => None")?;
-    writeln!(lang_rs, "  }}")?;
+    writeln!(lang_rs, "  configs")?;
     writeln!(lang_rs, "}}")?;
-
     Ok(())
 }
 
