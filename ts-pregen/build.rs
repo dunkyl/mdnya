@@ -11,9 +11,12 @@ fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         let lang_up = lang.to_uppercase();
         writeln!(lang_rs, "extern \"C\" {{ fn tree_sitter_{lang}() -> Language; }}")?;
         writeln!(lang_rs, "pub fn language_{lang}() -> Language {{ unsafe {{ tree_sitter_{lang}() }} }}")?;
-        let highlight_query_path = Path::new("langs").join(format!("tree-sitter-{lang}")).join("queries").join("highlights.scm");
+        // let highlight_query_path = Path::new("langs").join(format!("tree-sitter-{lang}")).join("queries").join("highlights.scm");
+        let highlight_query_path = ["..", "langs", format!("tree-sitter-{lang}").as_str(), "queries", "highlights.scm"].iter().collect::<PathBuf>();
         if highlight_query_path.exists() {
-            let path_string = Path::new("..").join("..").join("..").join("..").join("..").join(highlight_query_path);
+            // println!("{:?}", );
+            let path_string = PathBuf::from(std::env::current_dir()?).join(highlight_query_path);
+            // let path_string = Path::new("..").join("..").join("..").join("..").join("..").join(highlight_query_path);
             let path_string = path_string.to_str().unwrap().replace('\\', "\\\\");
             writeln!(lang_rs, "pub const HIGHLIGHT_QUERY_{lang_up}: &str = include_str!(\"{path_string}\");")?;
             highlight_queries.push(lang);
@@ -64,13 +67,13 @@ pub const HL_NAMES: &[&str] = &[
 
 fn main() {
 
-    let lang_paths = Path::new("langs").read_dir().unwrap()
+    let lang_paths = Path::new("../langs").read_dir().unwrap()
         .map(|p| p.unwrap().path())
         .filter(|p| p.is_dir()).collect::<Vec<_>>();
     
     for lang in &lang_paths {
         let lang_name = lang.file_name().unwrap().to_str().unwrap();
-        let lang_src = ["langs", lang_name, "src"].iter().collect::<PathBuf>();
+        let lang_src = ["..", "langs", lang_name, "src"].iter().collect::<PathBuf>();
         println!("cargo:rerun-if-changed={}", lang_src.display());
         let mut build = cc::Build::new();
         build.include(&lang_src);

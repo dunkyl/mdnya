@@ -256,6 +256,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             }
             NoTags => (),
             _ => {
+                // omit <p> before a <img>
                 if node.child_count() != 1 || !(kind == "paragraph" && node.child(0).unwrap().kind() == "image") {
                     k.start_tag(out, &tag, &attrs)?;
                 }
