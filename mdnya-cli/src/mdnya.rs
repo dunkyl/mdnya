@@ -4,6 +4,7 @@ use tree_sitter::{TreeCursor, Node};
 
 use regex::Regex;
 use lazy_static::lazy_static;
+use tree_sitter_highlight::util::html_escape;
 
 use crate::highlight;
 
@@ -98,6 +99,15 @@ fn node_text_safe<'a>(node: &Node, src: &'a [u8]) -> Cow<'a, str> {
     html_escape::encode_safe(node.utf8_text(src).unwrap())
 }
 
+fn node_text_raw<'a>(node: &Node, src: &'a [u8]) -> &'a str {
+    node.utf8_text(src).unwrap()
+}
+
+
+// fn node_text_attr<'a>(node: &Node, src: &'a [u8]) -> Cow<'a, str> {
+//     html_escape::encode_double_quoted_attribute(node.utf8_text(src).unwrap())
+// }
+
 impl HtmlHelper {
 
     fn write_indent(&self, out: &mut impl std::io::Write) -> std::io::Result<()> {
@@ -113,6 +123,7 @@ impl HtmlHelper {
         }
         write!(out, "{}{tag}", before)?;
         for (k, v) in attrs {
+            let k = html_escape::encode_unquoted_attribute(k);
             if let Some(v) = v {
                 write!(out, " {k}=\"{}\"", html_escape::encode_quoted_attribute(v))?;
             } else {
@@ -141,7 +152,7 @@ impl HtmlHelper {
 
 pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper, out: &mut impl std::io::Write) -> std::io::Result<()>
 {
-
+    
     lazy_static!{
 
         static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}( (?P<title>\w[\w\s]*))?").unwrap();
@@ -169,13 +180,14 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("strikethrough",   rename_tag!("del")),
             ("code_span",       rename_tag!("code")),
             ("block_quote",     rename_tag!("blockquote")),
+            ("uri_autolink",    rename_tag!("what")),
 
             ("thematic_break",  NodeBehavior::new(false, SelfClose, 0, tag_name!("hr"))),
             ("image", NodeBehavior::new(false, SelfClose, 0,
                 |node, src| ("img".into(),
                     vec![
-                        ("src", Some(node_text_safe(&node.child(1).unwrap(), src).into())),
-                        ("alt", Some(node_text_safe(&node.child(0).unwrap(), src).into()))
+                        ("src", Some(node_text_raw(&node.child(1).unwrap(), src).into())),
+                        ("alt", Some(node_text_raw(&node.child(0).unwrap(), src).into()))
                     ], None)
                 )),
             ("task_list_item_marker", NodeBehavior::new(false, SelfClose, 0,
@@ -220,7 +232,9 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                         } else {
                             let code_node = node.child(1).unwrap();
                             let code_slice = &src[code_node.start_byte()..code_node.end_byte()];
+                            let start = std::time::Instant::now();
                             let hl_code = highlight::highlight_code(code_slice, info).unwrap();
+                            println!("highlighting took {:?}", start.elapsed());
                             ("pre".into(), vec![
                                 ("data-lang", Some(info.into()))
                             ], hl_code)
@@ -235,6 +249,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
     }
 
     loop {
+
         let node = cursor.node();
         let kind = node.kind();
 
@@ -299,5 +314,8 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             break;
         }
     }
+
+    
+
     Ok(())
 }

@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 tree-sitter = "0.20"
 tree-sitter-highlight = "0.20"
+serde = { version = "1", features = ["derive", "rc"] }
+regex = "1"
+bincode = "1"
 
 [build-dependencies]
 cc = "1"

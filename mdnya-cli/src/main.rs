@@ -3,7 +3,7 @@ use std::{path::PathBuf, io::Write, error::Error};
 use tree_sitter::Parser;
 use clap::Parser as clapParser;
 
-mod generated_lang;
+use ts_pregen::generated_lang;
 
 mod mdnya;
 mod highlight;
@@ -33,6 +33,9 @@ struct Options {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+
+    // std::env::set_var("RUST_BACKTRACE", "1");
+
     let mut parser = Parser::new();
 
     let opts = Options::parse();
@@ -83,6 +86,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             putter.indent_level += 1;
         }
     }
+
+    println!("{}", root_node.to_sexp());
+
     cur.goto_first_child();
     mdnya::render_into(
         source_code.as_slice(),
