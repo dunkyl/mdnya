@@ -14,12 +14,15 @@ struct Options {
     /// Markdown file to convert
     #[clap(name="input")]
     input_file: PathBuf,
+
     /// HTML file to write to (default: <input>.html)
     #[clap(short, long, name="output")]
     output_file: Option<PathBuf>,
+
     /// Include closing tags for <p> and <li> elements
     #[clap(short, long, name="close-all-tags")]
     close_all_tags: bool,
+
     /// Surround document in tags, such as 'html,body' or article. Comma separated
     #[clap(short, long, name="wrap-tags", value_parser,  value_delimiter = ',')]
     wrap_tags: Option<Vec<String>>,
@@ -30,6 +33,14 @@ struct Options {
     /// Show times
     #[clap(short, long)]
     verbose: bool,
+
+    /// Increase base heading level to this number
+    #[clap(short='l', long="heading-level", default_value="1")]
+    heading_level: u8,
+
+    /// Add .g.html instead of just .html to the output file
+    #[clap(long="generated")]
+    mark_generated: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -55,7 +66,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             let stem_opt = opts.input_file.file_stem();
             if let Some(stem) = stem_opt {
                 let stem = stem.to_str().unwrap().to_owned();
-                Box::new(std::fs::File::create(stem + ".html")?) as Box<dyn Write>
+                let ext =
+                    if opts.mark_generated {
+                        ".g.html"
+                    }
+                    else {
+                        ".html"
+                    };
+                Box::new(std::fs::File::create(stem + ext)?) as Box<dyn Write>
             }
             else {
                 return Err("default output file (replace .md with .html) expects a filename with a stem".into())
@@ -79,6 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         is_inline: false,
         indent_level: 0,
         close_tags: opts.close_all_tags,
+        extra_heading_level: opts.heading_level,
     };
     if let Some(tags) = &opts.wrap_tags {
         for tag in tags {

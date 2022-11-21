@@ -11,7 +11,8 @@ use crate::highlight;
 pub struct HtmlHelper {
     pub is_inline: bool,
     pub indent_level: usize,
-    pub close_tags: bool
+    pub close_tags: bool,
+    pub extra_heading_level: u8,
 }
 
 #[derive(Clone, PartialEq)]
@@ -28,11 +29,11 @@ struct NodeBehavior {
     inline: bool,
     wrap: TagBehavior,
     skip_children: usize,
-    tag_attr_content: fn(&Node, &[u8]) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>),
+    tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>),
 }
 
 impl NodeBehavior {
-    fn new(inline: bool, wrap: TagBehavior, skip_children: usize, tag_attr_content: fn(&Node, &[u8]) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>)) -> Self {
+    fn new(inline: bool, wrap: TagBehavior, skip_children: usize, tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>)) -> Self {
         Self { inline, wrap, skip_children, tag_attr_content: tag_attr_content }
     }
 }
@@ -43,12 +44,12 @@ impl std::default::Default for NodeBehavior {
             inline: false,
             wrap: Full,
             skip_children: 0,
-            tag_attr_content: |n, _| (n.kind().to_string(), vec![], None)
+            tag_attr_content: |n, _, _| (n.kind().to_string(), vec![], None)
         }
     }
 }
 
-fn decide_list_type(node: &Node, src: &[u8]) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
+fn decide_list_type(node: &Node, src: &[u8], _: &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
     let markers = (0..node.child_count()).map(|i| node.child(i).unwrap().child(0).unwrap().utf8_text(src).unwrap()).collect::<Vec<_>>();
     let is_bulleted = markers.iter().all(|&m| m == "-" || m == "*");
     let is_numbered_forward = markers.iter().enumerate().all(|(i, &m)| m == &((i+1).to_string() + "."));
@@ -76,7 +77,7 @@ fn to_title_case(s: impl AsRef<str>) -> String {
 macro_rules! rename_tag {
     ($tag:expr) => {
         NodeBehavior {
-            tag_attr_content: |_, _| ($tag.into(), vec![], None),
+            tag_attr_content: |_, _, _| ($tag.into(), vec![], None),
             ..Default::default()
         }
     }
@@ -84,7 +85,7 @@ macro_rules! rename_tag {
 
 macro_rules! tag_name {
     ($tag:expr) => {
-        |_, _| ($tag.into(), vec![], None)
+        |_, _, _| ($tag.into(), vec![], None)
     }
 }
 
@@ -155,6 +156,20 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
     
     lazy_static!{
 
+        static ref LANGUAGE_ALIASES: HashMap<&'static str, &'static str> = {
+            [
+                ("c++", "cpp"),
+                ("c#", "c-sharp"),
+                ("f#", "fsharp"),
+                // ("html", "xml"),
+                ("js", "javascript"),
+                ("py", "python"),
+                ("rb", "ruby"),
+                ("sh", "bash"),
+                ("ts", "typescript"),
+            ].iter().cloned().collect()
+        };
+
         static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}( (?P<title>\w[\w\s]*))?").unwrap();
 
         static ref NODES_BEHAVE: HashMap<&'static str, NodeBehavior> = [
@@ -163,8 +178,10 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("task_list_item",  NodeBehavior::new(true, OptionalClose, 1, tag_name!("li"))),
             
             ("atx_heading",     NodeBehavior::new(true, Full, 1,
-                |node, _| { // find hX tag
-                    (node.child(0).unwrap().kind()[4..6].into(), vec![], None)
+                |node, _, helper| { // find hX tag
+                    let h_level = u8::from_str_radix(&node.child(0).unwrap().kind()[5..6], 10).unwrap();
+                    let h_str = format!("h{}", h_level+helper.extra_heading_level-1);
+                    (h_str, vec![], None)
                 })),
 
             ("heading_content",     no_tag()),
@@ -184,14 +201,14 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
 
             ("thematic_break",  NodeBehavior::new(false, SelfClose, 0, tag_name!("hr"))),
             ("image", NodeBehavior::new(false, SelfClose, 0,
-                |node, src| ("img".into(),
+                |node, src, _| ("img".into(),
                     vec![
                         ("src", Some(node_text_raw(&node.child(1).unwrap(), src).into())),
                         ("alt", Some(node_text_raw(&node.child(0).unwrap(), src).into()))
                     ], None)
                 )),
             ("task_list_item_marker", NodeBehavior::new(false, SelfClose, 0,
-                |node, src| {
+                |node, src, _| {
                     let is_checked = node.utf8_text(src).unwrap() == "[x]";
                     let mut attrs = vec![
                         ("type", Some("checkbox".into())),
@@ -201,7 +218,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                     ("input".into(), attrs, None)
                 })),
             ("link", NodeBehavior::new(false, Full, 0,
-                |node, src| ("a".into(),
+                |node, src, _| ("a".into(),
                     vec![ ("href", Some(node.child(1).unwrap().utf8_text(src).unwrap().to_string())) ],
                     Some( // link text
                         node.child(1).unwrap().utf8_text(src).unwrap().to_string().into()
@@ -210,7 +227,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("tight_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("loose_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("fenced_code_block", NodeBehavior::new(false, Full, 0, 
-                |node, src| {
+                |node, src, _| {
                     let first_child = node.child(0).expect("fenced_code_block are never empty");
                     if first_child.kind() == "info_string" {
                         let info = first_child.utf8_text(src).unwrap();
@@ -233,7 +250,8 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                             let code_node = node.child(1).unwrap();
                             let code_slice = &src[code_node.start_byte()..code_node.end_byte()];
                             let start = std::time::Instant::now();
-                            let hl_code = highlight::highlight_code(code_slice, info).unwrap();
+                            let ts_name = LANGUAGE_ALIASES.get(info.to_lowercase().as_str()).unwrap_or(&info);
+                            let hl_code = highlight::highlight_code(code_slice, ts_name).unwrap();
                             println!("highlighting took {:?}", start.elapsed());
                             ("pre".into(), vec![
                                 ("data-lang", Some(info.into()))
@@ -255,7 +273,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
 
         let behave = NODES_BEHAVE.get(kind).unwrap_or_else(|| panic!("{}", kind)); // _or(&DEFAULT_BEHAVE);
 
-        let (tag, attrs, replace_content) = (behave.tag_attr_content)(&node, src);
+        let (tag, attrs, replace_content) = (behave.tag_attr_content)(&node, src, putter);
 
         let is_inline = putter.is_inline || behave.inline;
 
