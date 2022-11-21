@@ -19,8 +19,12 @@ pub struct PregeneratedHLConfig {
 
 pub fn generate_hlconfig(name: &str, config: HighlightConfiguration) -> PregeneratedHLConfig {
 
+    let unsafe_view_ = unsafe {
+        std::mem::transmute::<_, ts_types::Intermediate_HighlightConfiguration>(config)
+    };
+
     let unsafe_view = unsafe {
-        std::mem::transmute::<_, ts_types::HighlightConfiguration>(config)
+        ts_types::HighlightConfiguration::convert_from_intermediate(unsafe_view_)
     };
 
     let mut regexes = vec![];
@@ -113,7 +117,9 @@ pub fn load_hlconfig(data: &[u8], language: Language) -> Result<(String, &'stati
 
     let name = pregen_config.name;
 
-    let intermediate = pregen_config.config.convert_to_intermediate();
+    let intermediate = unsafe {
+        pregen_config.config.convert_to_intermediate()
+    };
 
     let config = 
         unsafe {

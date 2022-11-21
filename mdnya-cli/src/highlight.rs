@@ -33,7 +33,7 @@ pub fn highlight_code(source: &[u8], lang_name: &str) -> Result<Option<Vec<u8>>,
             generated_lang::HL_NAMES.iter().map(|s| s.to_string().replace('.', "-")).collect::<Vec<_>>()
         };
 
-        static ref RUST_CONFIG: &'static tree_sitter_highlight::HighlightConfiguration = get_configuration("rust");
+        // static ref RUST_CONFIG: &'static tree_sitter_highlight::HighlightConfiguration = get_configuration("rust");
 
         static ref CONFIGS: HashMap<&'static str, tree_sitter_highlight::HighlightConfiguration> = generated_lang::initialize_configs();
     }

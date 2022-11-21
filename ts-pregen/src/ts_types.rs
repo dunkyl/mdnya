@@ -334,28 +334,49 @@ pub struct Intermediate_HighlightConfiguration {
 
 impl HighlightConfiguration {
 
-    pub fn convert_to_intermediate(self) -> Intermediate_HighlightConfiguration {
-        unsafe {
-            let combined_injections_query = match self.combined_injections_query {
-                Some(query) => Some(std::mem::transmute::<_, _>(query)),
-                None => None,
-            };
-            
-            Intermediate_HighlightConfiguration {
-                language: std::mem::transmute::<_, _>(self.language),
-                query: std::mem::transmute::<_, _>(self.query),
-                combined_injections_query,
-                locals_pattern_index: self.locals_pattern_index,
-                highlights_pattern_index: self.highlights_pattern_index,
-                highlight_indices: self.highlight_indices,
-                non_local_variable_patterns: self.non_local_variable_patterns,
-                injection_content_capture_index: self.injection_content_capture_index,
-                injection_language_capture_index: self.injection_language_capture_index,
-                local_scope_capture_index: self.local_scope_capture_index,
-                local_def_capture_index: self.local_def_capture_index,
-                local_def_value_capture_index: self.local_def_value_capture_index,
-                local_ref_capture_index: self.local_ref_capture_index,
-            }
+    pub unsafe fn convert_to_intermediate(self) -> Intermediate_HighlightConfiguration {
+        let combined_injections_query = match self.combined_injections_query {
+            Some(query) => Some(std::mem::transmute::<_, _>(query)),
+            None => None,
+        };
+        
+        Intermediate_HighlightConfiguration {
+            language: std::mem::transmute::<_, _>(self.language),
+            query: std::mem::transmute::<_, _>(self.query),
+            combined_injections_query,
+            locals_pattern_index: self.locals_pattern_index,
+            highlights_pattern_index: self.highlights_pattern_index,
+            highlight_indices: self.highlight_indices,
+            non_local_variable_patterns: self.non_local_variable_patterns,
+            injection_content_capture_index: self.injection_content_capture_index,
+            injection_language_capture_index: self.injection_language_capture_index,
+            local_scope_capture_index: self.local_scope_capture_index,
+            local_def_capture_index: self.local_def_capture_index,
+            local_def_value_capture_index: self.local_def_value_capture_index,
+            local_ref_capture_index: self.local_ref_capture_index,
+        }
+    }
+
+    pub unsafe fn convert_from_intermediate(other: Intermediate_HighlightConfiguration) -> Self {
+        let combined_injections_query = match other.combined_injections_query {
+            Some(query) => Some(std::mem::transmute::<_, _>(query)),
+            None => None,
+        };
+        
+        HighlightConfiguration {
+            language: std::mem::transmute::<_, _>(other.language),
+            query: std::mem::transmute::<_, _>(other.query),
+            combined_injections_query,
+            locals_pattern_index: other.locals_pattern_index,
+            highlights_pattern_index: other.highlights_pattern_index,
+            highlight_indices: other.highlight_indices,
+            non_local_variable_patterns: other.non_local_variable_patterns,
+            injection_content_capture_index: other.injection_content_capture_index,
+            injection_language_capture_index: other.injection_language_capture_index,
+            local_scope_capture_index: other.local_scope_capture_index,
+            local_def_capture_index: other.local_def_capture_index,
+            local_def_value_capture_index: other.local_def_value_capture_index,
+            local_ref_capture_index: other.local_ref_capture_index,
         }
     }
 
