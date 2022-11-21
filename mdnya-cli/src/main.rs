@@ -24,8 +24,12 @@ struct Options {
     close_all_tags: bool,
 
     /// Surround document in tags, such as 'html,body' or article. Comma separated
-    #[clap(short, long, name="wrap-tags", value_parser,  value_delimiter = ',')]
-    wrap_tags: Option<Vec<String>>,
+    #[clap(long, name="wrap-tags", value_parser,  value_delimiter = ',')]
+    wrap_document: Option<Vec<String>>,
+
+    /// Surround text after each heading in a tag
+    #[clap(long, name="wrap-sections")]
+    wrap_sections: Option<String>,
 
     // #[clap(short, long, name="enclose-sections", value_parser,  value_delimiter = ',')]
     // enclose_sections: Option<String>,
@@ -38,9 +42,9 @@ struct Options {
     #[clap(short='l', long="heading-level", default_value="1")]
     heading_level: u8,
 
-    /// Add .g.html instead of just .html to the output file
-    #[clap(long="generated")]
-    mark_generated: bool,
+    /// Change to this extension for default output. 
+    #[clap(long="ext")]
+    output_ext: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -64,16 +68,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         else {
             let stem_opt = opts.input_file.file_stem();
+            let out_dir = opts.input_file.as_path().parent().unwrap_or(std::path::Path::new("."));
             if let Some(stem) = stem_opt {
                 let stem = stem.to_str().unwrap().to_owned();
-                let ext =
-                    if opts.mark_generated {
-                        ".g.html"
-                    }
-                    else {
-                        ".html"
-                    };
-                Box::new(std::fs::File::create(stem + ext)?) as Box<dyn Write>
+                let ext = match opts.output_ext {
+                    Some(ref ext) => ext,
+                    None => ".html",
+                };
+                let output_path = out_dir.join(stem + ext);
+                Box::new(std::fs::File::create(output_path)?) as Box<dyn Write>
             }
             else {
                 return Err("default output file (replace .md with .html) expects a filename with a stem".into())
@@ -98,8 +101,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         indent_level: 0,
         close_tags: opts.close_all_tags,
         extra_heading_level: opts.heading_level,
+        wrap_sections: opts.wrap_sections,
+        last_heading_level: 0,
+        last_elem_was_header: false,
     };
-    if let Some(tags) = &opts.wrap_tags {
+    if let Some(tags) = &opts.wrap_document {
         for tag in tags {
             putter.start_tag(&mut output_writer, tag, &[])?;
             putter.indent_level += 1;
@@ -115,7 +121,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut putter,
         &mut output_writer
     )?;
-    if let Some(tags) = &opts.wrap_tags {
+    if let Some(tags) = &opts.wrap_document {
         for tag in tags {
             putter.end_tag(&mut output_writer, tag)?;
             putter.indent_level -= 1;
