@@ -3,13 +3,30 @@ use std::{error::Error, collections::HashMap};
 use lazy_static::lazy_static;
 
 use crate::generated_lang;
-use ts_pregen::load_hlconfig;
+use hlconfig_pregen::load_hlconfig;
 
-const CONFIG_RAW_DATA: &[u8] = include_bytes!("../../pregen/rust.hlconfig");
+// const CONFIG_DATA_RUST: &[u8] = include_bytes!("../../hlconfigs/rust.hlconfig");
+// const CONFIG_DATA_CSHARP: &[u8] = include_bytes!("../../hlconfigs/c_sharp.hlconfig");
 
-pub fn get_configuration(_lang_name: &str) -> &'static tree_sitter_highlight::HighlightConfiguration {
-    let lang = generated_lang::language_rust();
-    // let (_, config) = load_hlconfig(CONFIG_RAW_DATA, lang).unwrap();
+lazy_static! {
+    static ref LANGS: HashMap<&'static str, tree_sitter::Language> = generated_lang::initialize_langs();
+}
+
+pub fn get_configuration(lang_name: &str) -> Option<&'static tree_sitter_highlight::HighlightConfiguration> {
+    
+    lazy_static!{
+        static ref RAW_CONFIGS: HashMap<&'static str, &'static [u8]> = {
+            let mut configs = HashMap::<_, &[u8]>::new();
+            configs.insert("rust", include_bytes!("../../hlconfigs/rust.hlconfig"));
+            configs.insert("c_sharp", include_bytes!("../../hlconfigs/c_sharp.hlconfig"));
+            configs.insert("bash", include_bytes!("../../hlconfigs/bash.hlconfig"));
+            configs
+        };
+    }
+    
+    let lang = LANGS.get(lang_name)?;
+    let data = RAW_CONFIGS.get(lang_name)?;
+    // let (_, config) = load_hlconfig(data, *lang).unwrap();
     // println!("{}", config.query.pattern_count());
     
     // config.1
@@ -20,7 +37,7 @@ pub fn get_configuration(_lang_name: &str) -> &'static tree_sitter_highlight::Hi
     //     "",
     //     ""
     // ).unwrap()
-    load_hlconfig(CONFIG_RAW_DATA, lang).unwrap().1
+    Some(load_hlconfig(data, *lang).unwrap().1)
     // println!("{}", config2.query.pattern_count());
 
     // config2
@@ -42,10 +59,10 @@ pub fn highlight_code(source: &[u8], lang_name: &str) -> Result<Option<Vec<u8>>,
     let start_static = std::time::Instant::now();
     // let get = CONFIGS.get(lang_name);
     // let get = Some(&RUST_CONFIG);
-    let get = Some(get_configuration(lang_name));
+    // let get = Some(get_configuration(lang_name));
     let end_static = std::time::Instant::now();
     println!("  static load time: {:?}", end_static - start_static);
-    if let Some(config) = get {
+    if let Some(config) = get_configuration(lang_name) {
         let hl = tshl.highlight(&config, source, None, |_| None)?;
         let mut renderer = tree_sitter_highlight::HtmlRenderer::new();
         renderer.render(hl, source, &|hl| HL_CLASSES[hl.0].as_bytes())?;

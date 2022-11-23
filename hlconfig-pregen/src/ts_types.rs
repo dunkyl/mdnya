@@ -17,7 +17,7 @@ pub struct PtrPlaceholder {
 pub mod c_types {
     use std::fmt;
 
-    use serde::{ser::{SerializeStruct, SerializeSeq}, de::{Visitor, SeqAccess, MapAccess}, Deserializer};
+    use serde::{ser::SerializeSeq, de::{Visitor, SeqAccess}};
 
     use super::*;
 
@@ -316,7 +316,7 @@ pub struct HighlightConfiguration {
     local_ref_capture_index: Option<u32>,
 }
 
-pub struct Intermediate_HighlightConfiguration {
+pub struct IntermediateHLConf {
     pub language: tree_sitter::Language,
     pub query: tree_sitter::Query,
     pub combined_injections_query: Option<tree_sitter::Query>,
@@ -334,13 +334,13 @@ pub struct Intermediate_HighlightConfiguration {
 
 impl HighlightConfiguration {
 
-    pub unsafe fn convert_to_intermediate(self) -> Intermediate_HighlightConfiguration {
+    pub unsafe fn convert_to_intermediate(self) -> IntermediateHLConf {
         let combined_injections_query = match self.combined_injections_query {
             Some(query) => Some(std::mem::transmute::<_, _>(query)),
             None => None,
         };
         
-        Intermediate_HighlightConfiguration {
+        IntermediateHLConf {
             language: std::mem::transmute::<_, _>(self.language),
             query: std::mem::transmute::<_, _>(self.query),
             combined_injections_query,
@@ -357,7 +357,7 @@ impl HighlightConfiguration {
         }
     }
 
-    pub unsafe fn convert_from_intermediate(other: Intermediate_HighlightConfiguration) -> Self {
+    pub unsafe fn convert_from_intermediate(other: IntermediateHLConf) -> Self {
         let combined_injections_query = match other.combined_injections_query {
             Some(query) => Some(std::mem::transmute::<_, _>(query)),
             None => None,

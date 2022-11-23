@@ -20,7 +20,7 @@ pub struct PregeneratedHLConfig {
 pub fn generate_hlconfig(name: &str, config: HighlightConfiguration) -> PregeneratedHLConfig {
 
     let unsafe_view_ = unsafe {
-        std::mem::transmute::<_, ts_types::Intermediate_HighlightConfiguration>(config)
+        std::mem::transmute::<_, ts_types::IntermediateHLConf>(config)
     };
 
     let unsafe_view = unsafe {

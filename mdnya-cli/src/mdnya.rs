@@ -1,4 +1,4 @@
-use std::{collections::HashMap, borrow::Cow};
+use std::{collections::HashMap, borrow::Cow, io::stdout};
 
 use tree_sitter::{TreeCursor, Node};
 
@@ -6,6 +6,8 @@ use regex::Regex;
 use lazy_static::lazy_static;
 
 use crate::highlight;
+
+const INDENT_STR: &str = "    ";
 
 pub struct HtmlHelper {
     pub is_inline: bool,
@@ -15,6 +17,8 @@ pub struct HtmlHelper {
     pub wrap_sections: Option<String>,
     pub last_heading_level: u8,
     pub last_elem_was_header: bool,
+    pub omit_header_id: bool,
+    pub inside_section: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -31,11 +35,11 @@ struct NodeBehavior {
     inline: bool,
     wrap: TagBehavior,
     skip_children: usize,
-    tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>),
+    tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (Vec<String>, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>),
 }
 
 impl NodeBehavior {
-    fn new(inline: bool, wrap: TagBehavior, skip_children: usize, tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>)) -> Self {
+    fn new(inline: bool, wrap: TagBehavior, skip_children: usize, tag_attr_content: fn(&Node, &[u8], &HtmlHelper) -> (Vec<String>, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>)) -> Self {
         Self { inline, wrap, skip_children, tag_attr_content: tag_attr_content }
     }
 }
@@ -46,23 +50,23 @@ impl std::default::Default for NodeBehavior {
             inline: false,
             wrap: Full,
             skip_children: 0,
-            tag_attr_content: |n, _, _| (n.kind().to_string(), vec![], None)
+            tag_attr_content: |n, _, _| (vec![n.kind().to_string()], vec![], None)
         }
     }
 }
 
-fn decide_list_type(node: &Node, src: &[u8], _: &HtmlHelper) -> (String, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
+fn decide_list_type(node: &Node, src: &[u8], _: &HtmlHelper) -> (Vec<String>, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
     let markers = (0..node.child_count()).map(|i| node.child(i).unwrap().child(0).unwrap().utf8_text(src).unwrap()).collect::<Vec<_>>();
     let is_bulleted = markers.iter().all(|&m| m == "-" || m == "*");
     let is_numbered_forward = markers.iter().enumerate().all(|(i, &m)| m == &((i+1).to_string() + "."));
     let is_numbered_backward  = markers.iter().enumerate().all(|(i, &m)| m == &((markers.len() - i).to_string() + "."));
 
     if is_bulleted {
-        ("ul".into(), vec![], None)
+        (vec!["ul".into()], vec![], None)
     } else if is_numbered_forward {
-        ("ol".into(), vec![], None)
+        (vec!["ol".into()], vec![], None)
     } else if is_numbered_backward {
-        ("ol".into(), vec![("reversed", None)], None)
+        (vec!["ol".into()], vec![("reversed", None)], None)
     } else {
         todo!("unknown list type {:?}", markers)
     }
@@ -79,7 +83,7 @@ fn to_title_case(s: impl AsRef<str>) -> String {
 macro_rules! rename_tag {
     ($tag:expr) => {
         NodeBehavior {
-            tag_attr_content: |_, _, _| ($tag.into(), vec![], None),
+            tag_attr_content: |_, _, _| (vec![$tag.into()], vec![], None),
             ..Default::default()
         }
     }
@@ -87,7 +91,7 @@ macro_rules! rename_tag {
 
 macro_rules! tag_name {
     ($tag:expr) => {
-        |_, _, _| ($tag.into(), vec![], None)
+        |_, _, _| (vec![$tag.into()], vec![], None)
     }
 }
 
@@ -115,12 +119,12 @@ impl HtmlHelper {
 
     fn write_indent(&self, out: &mut impl std::io::Write) -> std::io::Result<()> {
         for _ in 0..self.indent_level {
-            write!(out, "    ")?;
+            write!(out, "{}", INDENT_STR)?;
         }
         Ok(())
     }
 
-    fn write_tag(&self, out: &mut impl std::io::Write, before: &str, tag: &str, attrs: &[(&str, Option<String>)], after: &str) -> std::io::Result<()> {
+    fn write_tag(&self, out: &mut impl std::io::Write, before: &str, tag: &str, attrs: &[(&str, Option<String>)], after: &str, n: bool) -> std::io::Result<()> {
         if !self.is_inline {
             self.write_indent(out)?;
         }
@@ -134,33 +138,37 @@ impl HtmlHelper {
             }
         }
         write!(out, "{}", after)?;
-        if !self.is_inline {
+        if !self.is_inline && n {
             write!(out, "\n")?;
         }
         Ok(())
     }
 
-    pub fn start_tag(&self, out: &mut impl std::io::Write, tag: & impl AsRef<str>, attrs: &[(&str, Option<String>)]) -> std::io::Result<()> {
-        self.write_tag(out, "<", tag.as_ref(), attrs, ">")
+    pub fn start_tag(&self, out: &mut impl std::io::Write, tag: & impl AsRef<str>, attrs: &[(&str, Option<String>)], n: bool) -> std::io::Result<()> {
+        self.write_tag(out, "<", tag.as_ref(), attrs, ">", n)
     }
 
     fn self_close_tag(&self, out: &mut impl std::io::Write, tag: & impl AsRef<str>, attrs: &[(&str, Option<String>)]) -> std::io::Result<()> {
-        self.write_tag(out, "<", tag.as_ref(), attrs, " />")
+        self.write_tag(out, "<", tag.as_ref(), attrs, " />", true)
     }
 
     pub fn end_tag(&self, out: &mut impl std::io::Write, tag: & impl AsRef<str>) -> std::io::Result<()> {
-        self.write_tag(out, "</", tag.as_ref(), &[], ">")
+        self.write_tag(out, "</", tag.as_ref(), &[], ">", true)
     }
 
     pub fn start_section(&mut self, out: &mut impl std::io::Write, tag: & impl AsRef<str>) -> std::io::Result<()> {
-        self.start_tag(out, tag, &[])?;
+        println!("!start section");
+        self.start_tag(out, tag, &[], true)?;
         self.indent_level += 1;
+        self.inside_section = true;
         Ok(())
     }
 
     pub fn end_section(&mut self, out: &mut impl std::io::Write, tag: & impl AsRef<str>) -> std::io::Result<()> {
-        self.indent_level -= 1;
+        println!("!end section");
+        self.indent_level = self.indent_level.saturating_sub(1);
         self.end_tag(out, tag)?;
+        self.inside_section = false;
         Ok(())
     }
 
@@ -178,7 +186,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
         static ref LANGUAGE_ALIASES: HashMap<&'static str, &'static str> = {
             [
                 ("c++", "cpp"),
-                ("c#", "c-sharp"),
+                ("c#", "c_sharp"),
                 ("f#", "fsharp"),
                 // ("html", "xml"),
                 ("js", "javascript"),
@@ -197,13 +205,26 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("task_list_item",  NodeBehavior::new(true, OptionalClose, 1, tag_name!("li"))),
             
             ("atx_heading",     NodeBehavior::new(true, Full, 1,
-                |node, _, helper| { // find hX tag
+                |node, src, helper| { // find hX tag
                     let level = find_header_level(node);
                     let h_str = format!("h{}", level+helper.extra_heading_level-1);
-                    (h_str, vec![], None)
+                    let heading_content = node_text_raw(&node.child(1).unwrap(), src).trim_start();
+                    let attrs =
+                        if helper.omit_header_id {
+                            vec![]
+                        } else {
+                            let id = 
+                                if heading_content.starts_with('@')  {
+                                    heading_content.to_string()
+                                } else {
+                                    heading_content.to_lowercase().replace(" ", "-")
+                                };
+                            vec![("id", Some(id))]
+                        };
+                    (vec![h_str], attrs, Some(html_escape::encode_text(heading_content).as_bytes().into()))
                 })),
 
-            ("heading_content",     no_tag()),
+            // ("heading_content",     no_tag()),
             ("text",                no_tag()),
             // ("link_text",           no_tag()),
             ("line_break",          no_tag()),
@@ -220,7 +241,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
 
             ("thematic_break",  NodeBehavior::new(false, SelfClose, 0, tag_name!("hr"))),
             ("image", NodeBehavior::new(false, SelfClose, 0,
-                |node, src, _| ("img".into(),
+                |node, src, _| (vec!["img".into()],
                     vec![
                         ("src", Some(node_text_raw(&node.child(1).unwrap(), src).into())),
                         ("alt", Some(node_text_raw(&node.child(0).unwrap(), src).into()))
@@ -234,10 +255,10 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                         ("disabled", None)
                     ];
                     if is_checked { attrs.push(("checked", None)); }
-                    ("input".into(), attrs, None)
+                    (vec!["input".into()], attrs, None)
                 })),
             ("link", NodeBehavior::new(false, Full, 0,
-                |node, src, _| ("a".into(),
+                |node, src, _| (vec!["a".into()],
                     vec![ ("href", Some(node.child(1).unwrap().utf8_text(src).unwrap().to_string())) ],
                     Some( // link text
                         node.child(0).unwrap().utf8_text(src).unwrap().to_string().into()
@@ -246,23 +267,30 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("tight_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("loose_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("fenced_code_block", NodeBehavior::new(false, Full, 0, 
-                |node, src, _| {
+                |node, src, helper| {
                     let first_child = node.child(0).expect("fenced_code_block are never empty");
                     if first_child.kind() == "info_string" {
                         let info = first_child.utf8_text(src).unwrap();
                         // println!("info: {}", info);
                         if  let Some(caps) = RE_ADMONITION.captures(info) {
                             // println!("is admonition");
-                            let title_elem = caps.name("title").map(
-                                |title| {
-                                    format!("<div class=\"admonition-title\">{}</div>", to_title_case(title.as_str()))
+                            let indent = INDENT_STR.repeat(helper.indent_level+1);
+                            let close_p = if helper.close_tags { "</p>" } else { "" };
+                            let title_elem = format!("{indent}<h3>{}</h3>\n{indent}<p>", 
+                                match caps.name("title") {
+                                    Some(titlematch) => to_title_case(titlematch.as_str()),
+                                    None => {
+                                        to_title_case(caps.name("class").unwrap().as_str())
+                                    }
                                 }
                             );
-                            let inner_content: Vec<u8> = 
-                                title_elem.unwrap_or("".into()).as_bytes().iter()
+                            let mut inner_content: Vec<u8> = 
+                                title_elem.as_bytes().iter()
                                 .chain(node_text_safe(&node.child(1).unwrap(), src).as_bytes().iter())
+                                .chain(close_p.as_bytes().iter())
                                 .cloned().collect();
-                            ("div".into(), vec![
+                            inner_content.push(b'\n');
+                            (vec!["div".into()], vec![
                                 ("class", Some(format!("admonition {}", caps.name("class").unwrap().as_str())))
                             ], Some(inner_content))
                         } else {
@@ -271,13 +299,29 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                             let start = std::time::Instant::now();
                             let ts_name = LANGUAGE_ALIASES.get(info.to_lowercase().as_str()).unwrap_or(&info);
                             let hl_code = highlight::highlight_code(code_slice, ts_name).unwrap();
+                            let hl_code_lines: Option<Vec<u8>> = match hl_code {
+                                Some(v) => {
+                                    let mut str = String::from_utf8(v).unwrap();
+                                    str.truncate(str.len()-1); // remove trailing newline
+                                    let with_lines: String = str.replace("\n", "</span>\n<span class=\"code-line\">");
+                                    Some(format!("<span class=\"code-line\">{with_lines}</span>").into())
+                                }
+                                None => None
+                            };
+
+                            let inner_content = hl_code_lines.unwrap_or_else(
+                                || {
+                                    std::vec::Vec::from(code_slice)
+                                }
+                            );
+
                             println!("highlighting took {:?}", start.elapsed());
-                            ("pre".into(), vec![
+                            (vec!["pre".into(), "code".into()], vec![
                                 ("data-lang", Some(info.into()))
-                            ], hl_code)
+                            ], Some(inner_content))
                         }
                     } else {
-                        ("pre".into(), vec![], None)
+                        (vec!["pre".into(), "code".into()], vec![], None)
                     }
                 })),
         ].iter().cloned().collect();
@@ -285,32 +329,37 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
         // static ref DEFAULT_BEHAVE: NodeBehavior = NodeBehavior::default();
     }
 
-    let mut inside_section = false;
+    // let mut inside_section = false;
 
     loop {
-
-        if putter.last_heading_level == 1 {
-            if let Some(tag) = &putter.wrap_sections {
-                putter.start_tag(out, tag, &[])?;
-                putter.indent_level += 1;
-                putter.last_heading_level = 2;
-                inside_section = true;
-            }
-        }
-
         let node = cursor.node();
         let kind = node.kind();
+        let behave = NODES_BEHAVE.get(kind).unwrap_or_else(|| panic!("{}", kind));
+
+        let is_heading = kind == "atx_heading";
 
         if let Some(n) = node.prev_sibling() {
-            if n.kind() == "atx_heading" {
-                if let Some(tag) = &putter.wrap_sections {
-                    putter.start_tag(out, tag, &[])?;
-                    putter.indent_level += 1;
+            if n.kind() == "atx_heading" && !is_heading && !putter.inside_section {
+                if let Some(tag) = putter.wrap_sections.clone() {
+                    // println!("!start section");
+                    // putter.start_tag(out, tag, &[])?;
+                    // putter.indent_level += 1;
+                    // putter.inside_section = true;
+                    putter.start_section(out, &tag)?;
                 }
             }
         }
 
-        let behave = NODES_BEHAVE.get(kind).unwrap_or_else(|| panic!("{}", kind)); // _or(&DEFAULT_BEHAVE);
+        
+        putter.write_indent(&mut stdout())?;
+        if behave.inline || putter.is_inline {
+            println!("@{kind}~");
+        } else {
+            putter.write_indent(&mut stdout())?;
+            println!("@{kind}");
+        }
+
+        // let behave = NODES_BEHAVE.get(kind).unwrap_or_else(|| panic!("{}", kind)); // _or(&DEFAULT_BEHAVE);
 
         let (tag, attrs, replace_content) = (behave.tag_attr_content)(&node, src, putter);
 
@@ -318,22 +367,32 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
 
         let switched_inline = is_inline && !putter.is_inline;
 
-        let k = &mut HtmlHelper { is_inline, wrap_sections: putter.wrap_sections.clone(), ..*putter};
+        let k = &mut HtmlHelper { is_inline, wrap_sections: putter.wrap_sections.clone(), inside_section: false, ..*putter};
         if switched_inline {
             putter.write_indent(out)?;
         }
         match behave.wrap {
             SelfClose => {
-                k.self_close_tag(out, &tag, &attrs)?;
+                // TODO: type enforce only one tag for self close 
+                k.self_close_tag(out, &tag[0], &attrs)?;
             }
             NoTags => (),
             _ => {
-                // omit <p> before a <img>
+                // if not <p> before a <img> (omitted)
                 if node.child_count() != 1 || !(kind == "paragraph" && node.child(0).unwrap().kind() == "image") {
                     // if kind == "atx_heading" {
                     //     writeln!(out, "")?;
                     // }
-                    k.start_tag(out, &tag, &attrs)?;
+                    let mut tag_iter = tag.iter();
+                    let first = tag_iter.next().unwrap();
+                    k.start_tag(out, first, &attrs, first != "pre")?;
+                    
+                    for tag in tag_iter {
+                        write!(out, "<{}>", tag)?;
+                    }
+                    // if tag[0] == "pre" {
+                    //     writeln!(out, "")?;
+                    // }
                 }
             }
         }
@@ -355,10 +414,10 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                         out)?;
                     cursor.goto_parent();
                 } else {
-                    let mut text = node.utf8_text(src).unwrap();
-                    if node.parent().and_then(|n| n.parent()).map(|n| n.kind()) == Some("atx_heading") {
-                        text = text.trim();
-                    } 
+                    let /*mut*/ text = node.utf8_text(src).unwrap().trim_start();
+                    // if node.parent().and_then(|n| n.parent()).map(|n| n.kind()) == Some("atx_heading") {
+                    //     text = text.trim();
+                    // } 
                     html_escape::encode_text_to_writer(text, out)?;
                 }
             }
@@ -366,7 +425,18 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
         match (&behave.wrap, putter.close_tags)  {
             (Full, _) | 
             (OptionalClose, true) => {
-                k.end_tag(out, &tag)?;
+                let omit_innner_newline = tag[0] == "pre";
+                
+                for tag in tag.iter().rev() {
+                    if omit_innner_newline {
+                        write!(out, "</{}>", tag)?;
+                    } else {
+                        k.end_tag(out, &tag)?;
+                    }
+                }
+                if omit_innner_newline {
+                    writeln!(out, "")?;
+                }
             }
             _ => ()
         }
@@ -376,12 +446,15 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
 
         let has_next = cursor.goto_next_sibling();
 
-        // TODO: doesn't close last section
-        if (inside_section && !has_next) || (has_next && cursor.node().kind() == "atx_heading") {
-            if let Some(tag) = &putter.wrap_sections {
-                putter.indent_level -= 1;
-                putter.end_tag(out, tag)?;
-                inside_section = false;
+        if (putter.inside_section && !has_next) || (has_next && cursor.node().kind() == "atx_heading") {
+            if let Some(tag) = putter.wrap_sections.clone() {
+                if !is_heading {
+                    putter.end_section(out, &tag)?;
+                    // println!("!end section");
+                    // putter.indent_level = putter.indent_level.saturating_sub(1);
+                    // putter.end_tag(out, tag)?;
+                    // putter.inside_section = false;
+                }
             }
         }
 

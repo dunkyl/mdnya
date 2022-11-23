@@ -96,6 +96,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hlconfig-pregen"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "cc",
+ "regex",
+ "serde",
+ "tree-sitter",
+ "tree-sitter-highlight",
+]
+
+[[package]]
 name = "html-escape"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -126,12 +138,12 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "clap",
+ "hlconfig-pregen",
  "html-escape",
  "lazy_static",
  "regex",
  "tree-sitter",
  "tree-sitter-highlight",
- "ts-pregen",
 ]
 
 [[package]]
@@ -296,18 +308,6 @@ dependencies = [
  "regex",
  "thiserror",
  "tree-sitter",
-]
-
-[[package]]
-name = "ts-pregen"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "cc",
- "regex",
- "serde",
- "tree-sitter",
- "tree-sitter-highlight",
 ]
 
 [[package]]

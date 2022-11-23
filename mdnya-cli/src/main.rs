@@ -3,7 +3,7 @@ use std::{path::PathBuf, io::Write, error::Error};
 use tree_sitter::Parser;
 use clap::Parser as clapParser;
 
-use ts_pregen::generated_lang;
+use hlconfig_pregen::generated_lang;
 
 mod mdnya;
 mod highlight;
@@ -45,6 +45,10 @@ struct Options {
     /// Change to this extension for default output. 
     #[clap(long="ext")]
     output_ext: Option<String>,
+
+    /// Don't add id attributes to headings
+    #[clap(long="no-ids")]
+    no_ids: bool
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -104,15 +108,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         wrap_sections: opts.wrap_sections,
         last_heading_level: 0,
         last_elem_was_header: false,
+        omit_header_id: opts.no_ids,
+        inside_section: false,
     };
     if let Some(tags) = &opts.wrap_document {
         for tag in tags {
-            putter.start_tag(&mut output_writer, tag, &[])?;
+            putter.start_tag(&mut output_writer, tag, &[], true)?;
             putter.indent_level += 1;
         }
     }
 
-    println!("{}", root_node.to_sexp());
+    // println!("{}", root_node.to_sexp());
 
     cur.goto_first_child();
     mdnya::render_into(

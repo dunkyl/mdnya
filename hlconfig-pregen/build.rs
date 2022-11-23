@@ -12,9 +12,12 @@ fn code_gen(lang_names: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         writeln!(lang_rs, "extern \"C\" {{ fn tree_sitter_{lang}() -> Language; }}")?;
         writeln!(lang_rs, "pub fn language_{lang}() -> Language {{ unsafe {{ tree_sitter_{lang}() }} }}")?;
         // let highlight_query_path = Path::new("langs").join(format!("tree-sitter-{lang}")).join("queries").join("highlights.scm");
-        let highlight_query_path = ["..", "langs", format!("tree-sitter-{lang}").as_str(), "queries", "highlights.scm"].iter().collect::<PathBuf>();
+        
+        let lang_dashes = lang.replace("_", "-");
+        let highlight_query_path = ["..", "langs", format!("tree-sitter-{lang_dashes}").as_str(), "queries", "highlights.scm"].iter().collect::<PathBuf>();
+        println!("highlight_query_path: {:?}", highlight_query_path);
         if highlight_query_path.exists() {
-            // println!("{:?}", );
+            println!("{:?}", "exists");
             let path_string = PathBuf::from(std::env::current_dir()?).join(highlight_query_path);
             // let path_string = Path::new("..").join("..").join("..").join("..").join("..").join(highlight_query_path);
             let path_string = path_string.to_str().unwrap().replace('\\', "\\\\");
@@ -43,6 +46,8 @@ pub const HL_NAMES: &[&str] = &[
     \"variable\",
     \"variable.builtin\",
     \"variable.parameter\",
+    \"number\",
+    \"comment\",
 ];
     ")?;
 
@@ -62,6 +67,14 @@ pub const HL_NAMES: &[&str] = &[
     }
     writeln!(lang_rs, "  configs")?;
     writeln!(lang_rs, "}}")?;
+
+    writeln!(lang_rs, "pub fn initialize_langs() -> HashMap<&'static str, Language> {{")?;
+    writeln!(lang_rs, "  let mut langs = HashMap::new();")?;
+    for lang in &lang_names {
+        writeln!(lang_rs, "  langs.insert(\"{lang}\", language_{lang}());")?;
+    }
+    writeln!(lang_rs, "  langs")?;
+    writeln!(lang_rs, "}}")?;
     Ok(())
 }
 
@@ -70,6 +83,8 @@ fn main() {
     let lang_paths = Path::new("../langs").read_dir().unwrap()
         .map(|p| p.unwrap().path())
         .filter(|p| p.is_dir()).collect::<Vec<_>>();
+
+    println!("{:?}", lang_paths);
     
     for lang in &lang_paths {
         let lang_name = lang.file_name().unwrap().to_str().unwrap();
@@ -87,6 +102,6 @@ fn main() {
     }
 
     // tree_sitter_<blank>
-    let langs = lang_paths.iter().map(|p| { p.as_os_str().to_string_lossy().split('-').last().unwrap().to_owned() }).collect::<Vec<_>>();
+    let langs = lang_paths.iter().map(|p| { p.as_os_str().to_string_lossy().splitn(3, '-').last().unwrap().replace('-', "_") }).collect::<Vec<_>>();
     code_gen(langs).unwrap();
 }

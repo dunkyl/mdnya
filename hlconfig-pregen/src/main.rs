@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, error::Error};
 
-use ts_pregen::{generated_lang, generate_hlconfig, PregeneratedHLConfig, ts_types::c_types};
+use hlconfig_pregen::{generated_lang, generate_hlconfig};
 
 fn main() -> Result<(), Box<dyn Error>> {
 
@@ -10,10 +10,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let end_configure = std::time::Instant::now();
 
-    println!("{}", std::mem::size_of::<*const ts_pregen::ts_types::c_types::TSQuery>());
-    println!("{}", std::mem::size_of::<[u8; std::mem::size_of::<*const ts_pregen::ts_types::c_types::TSQuery>()]>());
-    println!("{}", std::mem::size_of::<std::ptr::NonNull<ts_pregen::ts_types::c_types::TSQuery>>());
-    println!("{}", std::mem::size_of::<&'static ts_pregen::ts_types::c_types::TSQuery>());
+    println!("{}", std::mem::size_of::<*const hlconfig_pregen::ts_types::c_types::TSQuery>());
+    println!("{}", std::mem::size_of::<[u8; std::mem::size_of::<*const hlconfig_pregen::ts_types::c_types::TSQuery>()]>());
+    println!("{}", std::mem::size_of::<std::ptr::NonNull<hlconfig_pregen::ts_types::c_types::TSQuery>>());
+    println!("{}", std::mem::size_of::<&'static hlconfig_pregen::ts_types::c_types::TSQuery>());
 
     println!("Languages and highlights load time: {:?}", end_configure - start_time);
 
@@ -31,20 +31,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         bincode::serialize_into(output_file, &config_data)?;
 
-        let enc = bincode::serialize(&config_data)?;
+        // let enc = bincode::serialize(&config_data)?;
         // let dec = bincode::deserialize::<PregeneratedHLConfig>(&enc)?;
 
-        let (_name, dec_conf) = ts_pregen::load_hlconfig(&enc, generated_lang::language_rust())?;
+        // let (_name, dec_conf) = hlconfig_pregen::load_hlconfig(&enc, generated_lang::language_rust())?;
 
-        // let ts_query = bincode::deserialize::<c_types::TSQuery>(&dec.query_data)?;
+        // // let ts_query = bincode::deserialize::<c_types::TSQuery>(&dec.query_data)?;
 
-        // println!("ts query wildcards {}", ts_query.wildcard_root_pattern_count);
+        // // println!("ts query wildcards {}", ts_query.wildcard_root_pattern_count);
 
-        // println!("ts pattern_maps count {}, {}", ts_query.pattern_map.size, ts_query.pattern_map.capacity);
+        // // println!("ts pattern_maps count {}, {}", ts_query.pattern_map.size, ts_query.pattern_map.capacity);
 
-        // println!("{}: {:?}", dec.name, dec.regexes);
+        // // println!("{}: {:?}", dec.name, dec.regexes);
 
-        println!("{}", dec_conf.query.pattern_count());
+        // println!("{}", dec_conf.query.pattern_count());
 
     }
     

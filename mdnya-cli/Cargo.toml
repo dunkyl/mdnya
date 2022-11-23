@@ -13,7 +13,7 @@ regex = "1"
 lazy_static = "1.4.0"
 html-escape = "0.2.11"
 
-ts-pregen = { path = "../ts-pregen" }
+hlconfig-pregen = { path = "../hlconfig-pregen" }
 
 [build-dependencies]
 cc = "*"
