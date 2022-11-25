@@ -1,2 +1,2 @@
 [workspace]
-members = ['mdnya', 'hlconfig-pregen', 'mdnya-cli']
+members = ['mdnya', 'mdnya-hl-rust-gen', 'mdnya-cli', 'mdnya-hl-rust', 'mdnya-hl']

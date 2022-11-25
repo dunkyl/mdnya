@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Serialize, Deserialize)]
 pub struct Placeholder {
     _unused: [u8; 4],
@@ -78,6 +77,10 @@ pub mod c_types {
         pub capacity: u32,
     }
 
+    // impl<T> Drop for TSArray<T> {
+        
+    // }
+
     impl<T> Serialize for TSArray<T>
     where
         T: Serialize + Copy,
@@ -86,18 +89,6 @@ pub mod c_types {
         where
             S: serde::Serializer,
         {
-            // let mut state = serializer.serialize_struct("TSArray", 3)?;
-            // state.serialize_field("size", &self.size)?;
-            // state.serialize_field("capacity", &self.capacity)?;
-
-            // let mut contents = Vec::with_capacity(self.size as usize);
-            // for i in 0..self.size {
-            //     contents.push(unsafe { *self.contents.offset(i as isize) });
-            // }
-
-            // state.serialize_field("contents", &contents)?;
-
-            // state.end()
             let mut seq = serializer.serialize_seq(Some(self.size as usize))?;
             for i in 0..self.size {
                 seq.serialize_element(&unsafe { *self.contents.offset(i as isize) })?;
@@ -138,6 +129,9 @@ pub mod c_types {
                     let size = contents.len() as u32;
 
                     Ok(TSArray {
+                        // eventually a member of a struct that owns it
+                        // tree sitter's c impl will free it when the Language is dropped
+                        // the lifetime must be forgotten here to avoid a double free
                         contents: contents.leak().as_ptr(),
                         size,
                         capacity: size,
@@ -271,14 +265,6 @@ pub struct QueryProperty {
     pub value: Option<Box<str>>,
     pub capture_id: Option<usize>,
 }
-
-// impl Serialize for *const c_types::TSQuery {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer {
-//         todo!()
-//     }
-// }
 
 #[derive(Serialize, Deserialize)]
 pub struct PtrTSQuery {
@@ -414,28 +400,34 @@ impl HighlightConfiguration {
         }
     }
 
-    pub fn add_injections_regex(&mut self, regexes_iter: &mut impl Iterator<Item = String>) {
-        if let Some(query) = &mut self.combined_injections_query {
-            for predicates in query.text_predicates.iter_mut() {
-                for predicate in predicates.iter_mut() {
-                    match predicate {
-                        TextPredicate::CaptureMatchString(a, _placeholder, b) => {
-                            unsafe {
-                                let regex = regex::bytes::Regex::new(regexes_iter.next().unwrap().as_str()).unwrap();
-    
-                                let regex_placeholder =  std::mem::transmute::<_, RegexPlaceholder>(regex);
-                                *predicate = TextPredicate::CaptureMatchString(*a, regex_placeholder, *b);
-    
-                            }
+    fn insert_regexes(q: &mut Query, regexes: &mut impl Iterator<Item = String>) {
+        for predicates in q.text_predicates.iter_mut() {
+            for p in predicates.iter_mut() {
+                match p {
+                    TextPredicate::CaptureMatchString(a, _, b) => {
+                        unsafe {
+                            let re = regex::bytes::Regex::new(regexes.next().unwrap().as_str()).unwrap();
+                            let re_compat = std::mem::transmute::<_, _>(re);
+                            *p = TextPredicate::CaptureMatchString(*a, re_compat, *b);
                         }
-                        _ => ()
                     }
+                    _ => ()
                 }
             }
         }
     }
 
-    pub fn set_injections_data(&mut self, data: &mut c_types::TSQuery) {
+    pub fn add_query_regex(&mut self, regexes: &mut impl Iterator<Item = String>) {
+        Self::insert_regexes(&mut self.query, regexes);
+    }
+
+    pub fn add_injections_regex(&mut self, regexes: &mut impl Iterator<Item = String>) {
+        if let Some(query) = &mut self.combined_injections_query {
+            Self::insert_regexes(query, regexes);
+        }
+    }
+
+    pub fn set_injections_data(&mut self, data: &c_types::TSQuery) {
         if let Some(query) = &mut self.combined_injections_query {
             query.ptr = unsafe {
                 std::mem::transmute::<_, usize>(data)

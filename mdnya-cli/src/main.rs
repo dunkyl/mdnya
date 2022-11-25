@@ -3,7 +3,9 @@ use std::{path::PathBuf, io::Write, error::Error};
 use tree_sitter::Parser;
 use clap::Parser as clapParser;
 
-use hlconfig_pregen::generated_lang;
+// use hlconfig_pregen::generated_lang;
+
+// extern "C" { fn tree_sitter_markdown() -> tree_sitter::Language; }
 
 mod mdnya;
 mod highlight;
@@ -87,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-    parser.set_language(generated_lang::language_markdown()).unwrap();
+    parser.set_language(::mdnya::language_markdown()).unwrap();
 
     let time_parse_start = std::time::Instant::now();
     let tree = parser.parse(source_code.as_slice(), None).unwrap();

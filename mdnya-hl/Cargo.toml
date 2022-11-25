@@ -1,5 +1,5 @@
 [package]
-name = "hlconfig-pregen"
+name = "mdnya-hl"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,6 +11,3 @@ tree-sitter-highlight = "0.20"
 serde = { version = "1", features = ["derive", "rc"] }
 regex = "1"
 bincode = "1"
-
-[build-dependencies]
-cc = "1"

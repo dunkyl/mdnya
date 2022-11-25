@@ -2,30 +2,43 @@ use std::{error::Error, collections::HashMap};
 
 use lazy_static::lazy_static;
 
-use crate::generated_lang;
-use hlconfig_pregen::load_hlconfig;
+// use crate::generated_lang;
+// use hlconfig_pregen::load_hlconfig;
 
 // const CONFIG_DATA_RUST: &[u8] = include_bytes!("../../hlconfigs/rust.hlconfig");
 // const CONFIG_DATA_CSHARP: &[u8] = include_bytes!("../../hlconfigs/c_sharp.hlconfig");
 
-lazy_static! {
-    static ref LANGS: HashMap<&'static str, tree_sitter::Language> = generated_lang::initialize_langs();
-}
+// lazy_static! {
+//     static ref LANGS: HashMap<&'static str, tree_sitter::Language> = generated_lang::initialize_langs();
+    
+// }
 
 pub fn get_configuration(lang_name: &str) -> Option<&'static tree_sitter_highlight::HighlightConfiguration> {
     
-    lazy_static!{
-        static ref RAW_CONFIGS: HashMap<&'static str, &'static [u8]> = {
-            let mut configs = HashMap::<_, &[u8]>::new();
-            configs.insert("rust", include_bytes!("../../hlconfigs/rust.hlconfig"));
-            configs.insert("c_sharp", include_bytes!("../../hlconfigs/c_sharp.hlconfig"));
-            configs.insert("bash", include_bytes!("../../hlconfigs/bash.hlconfig"));
-            configs
-        };
-    }
+    // lazy_static!{
+    //     // static ref RAW_CONFIGS: HashMap<&'static str, &'static [u8]> = {
+    //     //     let mut configs = HashMap::<_, &[u8]>::new();
+    //     //     configs.insert("rust", include_bytes!("../../hlconfigs/rust.hlconfig"));
+    //     //     configs.insert("c_sharp", include_bytes!("../../hlconfigs/c_sharp.hlconfig"));
+    //     //     configs.insert("bash", include_bytes!("../../hlconfigs/bash.hlconfig"));
+    //     //     configs
+    //     // };
+
+    //     static ref CONFIGS: HashMap<&'static str, mdnya::LoadedHLLib> = {
+    //         todo!()
+    //     };
+    // }
+
+    let hl_lib = mdnya::load_hl_lib(format!("mdnya_hl_{}.dll", lang_name).into()).unwrap();
+    let hl_lib = Box::leak(Box::new(hl_lib));
+
+    let conf = hl_lib.get_config();
+
+    // let conf = mdnya_hl_rust::hl_static();
+    Some(conf)
     
-    let lang = LANGS.get(lang_name)?;
-    let data = RAW_CONFIGS.get(lang_name)?;
+    // let lang = LANGS.get(lang_name)?;
+    // let data = RAW_CONFIGS.get(lang_name)?;
     // let (_, config) = load_hlconfig(data, *lang).unwrap();
     // println!("{}", config.query.pattern_count());
     
@@ -37,7 +50,7 @@ pub fn get_configuration(lang_name: &str) -> Option<&'static tree_sitter_highlig
     //     "",
     //     ""
     // ).unwrap()
-    Some(load_hlconfig(data, *lang).unwrap().1)
+    // Some(load_hlconfig(data, *lang).unwrap().1)
     // println!("{}", config2.query.pattern_count());
 
     // config2
@@ -47,12 +60,33 @@ pub fn highlight_code(source: &[u8], lang_name: &str) -> Result<Option<Vec<u8>>,
 
     lazy_static! {
         static ref HL_CLASSES: Vec<String> = {
-            generated_lang::HL_NAMES.iter().map(|s| s.to_string().replace('.', "-")).collect::<Vec<_>>()
+            [
+                "attribute",
+                "constant",
+                "function.builtin",
+                "function",
+                "keyword",
+                "operator",
+                "property",
+                "punctuation",
+                "punctuation.bracket",
+                "punctuation.delimiter",
+                "string",
+                "string.special",
+                "tag",
+                "type",
+                "type.builtin",
+                "variable",
+                "variable.builtin",
+                "variable.parameter",
+                "number",
+                "comment",
+            ].iter().map(|s| s.to_string().replace('.', "-")).collect::<Vec<_>>()
         };
 
         // static ref RUST_CONFIG: &'static tree_sitter_highlight::HighlightConfiguration = get_configuration("rust");
 
-        static ref CONFIGS: HashMap<&'static str, tree_sitter_highlight::HighlightConfiguration> = generated_lang::initialize_configs();
+        // static ref CONFIGS: HashMap<&'static str, tree_sitter_highlight::HighlightConfiguration> = generated_lang::initialize_configs();
     }
     
     let mut tshl = tree_sitter_highlight::Highlighter::new();

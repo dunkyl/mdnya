@@ -44,6 +44,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "581f5dba903aac52ea3feb5ec4810848460ee833876f1f9b0fdeab1f19091574"
 
 [[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
 name = "clap"
 version = "4.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -96,18 +102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hlconfig-pregen"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "cc",
- "regex",
- "serde",
- "tree-sitter",
- "tree-sitter-highlight",
-]
-
-[[package]]
 name = "html-escape"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,8 +123,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7fcc620a3bff7cdd7a365be3376c97191aeaccc2a603e600951e452615bf89"
 
 [[package]]
+name = "libloading"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+dependencies = [
+ "cfg-if",
+ "winapi",
+]
+
+[[package]]
 name = "mdnya"
 version = "0.1.0"
+dependencies = [
+ "cc",
+ "libloading",
+ "mdnya-hl",
+ "tree-sitter",
+ "tree-sitter-highlight",
+]
 
 [[package]]
 name = "mdnya-cli"
@@ -138,10 +149,42 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "clap",
- "hlconfig-pregen",
  "html-escape",
  "lazy_static",
+ "mdnya",
+ "mdnya-hl-rust",
  "regex",
+ "tree-sitter",
+ "tree-sitter-highlight",
+]
+
+[[package]]
+name = "mdnya-hl"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "regex",
+ "serde",
+ "tree-sitter",
+ "tree-sitter-highlight",
+]
+
+[[package]]
+name = "mdnya-hl-rust"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "cc",
+ "mdnya-hl-rust-gen",
+]
+
+[[package]]
+name = "mdnya-hl-rust-gen"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "cc",
+ "mdnya-hl",
  "tree-sitter",
  "tree-sitter-highlight",
 ]
