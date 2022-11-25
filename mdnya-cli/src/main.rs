@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // println!("{}", root_node.to_sexp());
+    println!("{}", root_node.to_sexp());
 
     cur.goto_first_child();
     mdnya::render_into(
