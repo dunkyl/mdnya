@@ -55,6 +55,25 @@ impl std::default::Default for NodeBehavior {
     }
 }
 
+lazy_static! {
+    static ref LANGUAGE_ALIASES: HashMap<&'static str, &'static str> = {
+        [
+            ("c++", "cpp"),
+            ("c#", "c_sharp"),
+            ("f#", "fsharp"),
+            // ("html", "xml"),
+            ("js", "javascript"),
+            ("py", "python"),
+            ("rb", "ruby"),
+            ("sh", "bash"),
+            ("ts", "typescript"),
+        ].iter().cloned().collect()
+    };
+
+    static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}( (?P<title>\w[\w\s]*))?").unwrap();
+
+}
+
 fn decide_list_type(node: &Node, src: &[u8], _: &HtmlHelper) -> (Vec<String>, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
     let markers = (0..node.child_count()).map(|i| node.child(i).unwrap().child(0).unwrap().utf8_text(src).unwrap()).collect::<Vec<_>>();
     let is_bulleted = markers.iter().all(|&m| m == "-" || m == "*");
@@ -69,6 +88,64 @@ fn decide_list_type(node: &Node, src: &[u8], _: &HtmlHelper) -> (Vec<String>, Ve
         (vec!["ol".into()], vec![("reversed", None)], None)
     } else {
         todo!("unknown list type {:?}", markers)
+    }
+}
+
+fn render_code_block(node: &Node, src: &[u8], helper: &HtmlHelper) -> (Vec<String>, Vec<(&'static str, Option<String>)>, Option<Vec<u8>>) {
+    let first_child = node.child(0).expect("fenced_code_block are never empty");
+    if first_child.kind() == "info_string" {
+        let info = first_child.utf8_text(src).unwrap();
+        // println!("info: {}", info);
+        if  let Some(caps) = RE_ADMONITION.captures(info) {
+            // println!("is admonition");
+            let indent = INDENT_STR.repeat(helper.indent_level+1);
+            let close_p = if helper.close_tags { "</p>" } else { "" };
+            let title_elem = format!("{indent}<h3>{}</h3>\n{indent}<p>", 
+                match caps.name("title") {
+                    Some(titlematch) => to_title_case(titlematch.as_str()),
+                    None => {
+                        to_title_case(caps.name("class").unwrap().as_str())
+                    }
+                }
+            );
+            let mut inner_content: Vec<u8> = 
+                title_elem.as_bytes().iter()
+                .chain(node_text_safe(&node.child(1).unwrap(), src).as_bytes().iter())
+                .chain(close_p.as_bytes().iter())
+                .cloned().collect();
+            inner_content.push(b'\n');
+            (vec!["div".into()], vec![
+                ("class", Some(format!("admonition {}", caps.name("class").unwrap().as_str())))
+            ], Some(inner_content))
+        } else {
+            let code_node = node.child(1).unwrap();
+            let code_slice = &src[code_node.start_byte()..code_node.end_byte()];
+            let start = std::time::Instant::now();
+            let ts_name = LANGUAGE_ALIASES.get(info.to_lowercase().as_str()).unwrap_or(&info);
+            let hl_code = highlight::highlight_code(code_slice, ts_name).unwrap();
+            let hl_code_lines: Option<Vec<u8>> = match hl_code {
+                Some(v) => {
+                    let mut str = String::from_utf8(v).unwrap();
+                    str.truncate(str.len()-1); // remove trailing newline
+                    let with_lines: String = str.replace("\n", "</span>\n<span class=\"code-line\">");
+                    Some(format!("<span class=\"code-line\">{with_lines}</span>").into())
+                }
+                None => None
+            };
+
+            let inner_content = hl_code_lines.unwrap_or_else(
+                || {
+                    std::vec::Vec::from(code_slice)
+                }
+            );
+
+            println!("highlighting took {:?}", start.elapsed());
+            (vec!["pre".into(), "code".into()], vec![
+                ("data-lang", Some(info.into()))
+            ], Some(inner_content))
+        }
+    } else {
+        (vec!["pre".into(), "code".into()], vec![], None)
     }
 }
 
@@ -183,22 +260,7 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
     
     lazy_static!{
 
-        static ref LANGUAGE_ALIASES: HashMap<&'static str, &'static str> = {
-            [
-                ("c++", "cpp"),
-                ("c#", "c_sharp"),
-                ("f#", "fsharp"),
-                // ("html", "xml"),
-                ("js", "javascript"),
-                ("py", "python"),
-                ("rb", "ruby"),
-                ("sh", "bash"),
-                ("ts", "typescript"),
-            ].iter().cloned().collect()
-        };
-
-        static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}( (?P<title>\w[\w\s]*))?").unwrap();
-
+       
         static ref NODES_BEHAVE: HashMap<&'static str, NodeBehavior> = [
             ("paragraph",       NodeBehavior::new(true, OptionalClose, 0, tag_name!("p"))),
             ("list_item",       NodeBehavior::new(true, OptionalClose, 1, tag_name!("li"))),
@@ -266,64 +328,8 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
                 )),
             ("tight_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("loose_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
-            ("fenced_code_block", NodeBehavior::new(false, Full, 0, 
-                |node, src, helper| {
-                    let first_child = node.child(0).expect("fenced_code_block are never empty");
-                    if first_child.kind() == "info_string" {
-                        let info = first_child.utf8_text(src).unwrap();
-                        // println!("info: {}", info);
-                        if  let Some(caps) = RE_ADMONITION.captures(info) {
-                            // println!("is admonition");
-                            let indent = INDENT_STR.repeat(helper.indent_level+1);
-                            let close_p = if helper.close_tags { "</p>" } else { "" };
-                            let title_elem = format!("{indent}<h3>{}</h3>\n{indent}<p>", 
-                                match caps.name("title") {
-                                    Some(titlematch) => to_title_case(titlematch.as_str()),
-                                    None => {
-                                        to_title_case(caps.name("class").unwrap().as_str())
-                                    }
-                                }
-                            );
-                            let mut inner_content: Vec<u8> = 
-                                title_elem.as_bytes().iter()
-                                .chain(node_text_safe(&node.child(1).unwrap(), src).as_bytes().iter())
-                                .chain(close_p.as_bytes().iter())
-                                .cloned().collect();
-                            inner_content.push(b'\n');
-                            (vec!["div".into()], vec![
-                                ("class", Some(format!("admonition {}", caps.name("class").unwrap().as_str())))
-                            ], Some(inner_content))
-                        } else {
-                            let code_node = node.child(1).unwrap();
-                            let code_slice = &src[code_node.start_byte()..code_node.end_byte()];
-                            let start = std::time::Instant::now();
-                            let ts_name = LANGUAGE_ALIASES.get(info.to_lowercase().as_str()).unwrap_or(&info);
-                            let hl_code = highlight::highlight_code(code_slice, ts_name).unwrap();
-                            let hl_code_lines: Option<Vec<u8>> = match hl_code {
-                                Some(v) => {
-                                    let mut str = String::from_utf8(v).unwrap();
-                                    str.truncate(str.len()-1); // remove trailing newline
-                                    let with_lines: String = str.replace("\n", "</span>\n<span class=\"code-line\">");
-                                    Some(format!("<span class=\"code-line\">{with_lines}</span>").into())
-                                }
-                                None => None
-                            };
-
-                            let inner_content = hl_code_lines.unwrap_or_else(
-                                || {
-                                    std::vec::Vec::from(code_slice)
-                                }
-                            );
-
-                            println!("highlighting took {:?}", start.elapsed());
-                            (vec!["pre".into(), "code".into()], vec![
-                                ("data-lang", Some(info.into()))
-                            ], Some(inner_content))
-                        }
-                    } else {
-                        (vec!["pre".into(), "code".into()], vec![], None)
-                    }
-                })),
+            ("fenced_code_block", NodeBehavior::new(false, Full, 0, render_code_block)),
+            ("indented_code_block", NodeBehavior::new(false, Full, 0, render_code_block)),
         ].iter().cloned().collect();
 
         // static ref DEFAULT_BEHAVE: NodeBehavior = NodeBehavior::default();
