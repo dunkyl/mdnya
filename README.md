@@ -4,10 +4,13 @@ Convert one markdown file to one html file.
 
 ## Usage
 
-```bash
-$ mdnya README.md
-# => README.html
-```
+mdnya is a command line tool. You can use it like this:
+
+    mdnya README.md
+
+It would produce a file named `README.html` in the same directory.
+
+TODO: libary usage
 
 ## Extensions
 
@@ -22,6 +25,8 @@ Tree Sitter Language(s):
  - Markdown (REQUIRED) - [tree-sitter-markdown](https://github.com/ikatyang/tree-sitter-markdown) by ikatyang
 
 Other parsers will be used inside code blocks for highlighting. Clone each parser repo into `langs` directory.
+
+TODO: about static and dynamic linking of highlighters
 
 ---
 
