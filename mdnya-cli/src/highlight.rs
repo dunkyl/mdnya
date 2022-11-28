@@ -2,6 +2,10 @@ use std::{error::Error, collections::HashMap};
 
 use lazy_static::lazy_static;
 
+pub trait CodeHighlighter {
+    fn highlight(&self, text: &[u8]) -> Result<Vec<u8>, Box<dyn Error>>;
+}
+
 // use crate::generated_lang;
 // use hlconfig_pregen::load_hlconfig;
 

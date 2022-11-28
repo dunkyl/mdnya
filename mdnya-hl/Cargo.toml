@@ -11,3 +11,9 @@ tree-sitter-highlight = "0.20"
 serde = { version = "1", features = ["derive", "rc"] }
 regex = "1"
 bincode = "1"
+
+libloading = { version = "0.7", optional = true }
+
+[features]
+default = ["dynamic"]
+dynamic = ["libloading"]

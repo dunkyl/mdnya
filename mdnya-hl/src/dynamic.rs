@@ -3,15 +3,8 @@ use std::path::PathBuf;
 use libloading::*;
 use tree_sitter_highlight::HighlightConfiguration as TSHLC;
 
-mod highlight;
-
-use mdnya_hl::{HLLib, load_hlconfig};
-
-extern "C" { fn tree_sitter_markdown() -> tree_sitter::Language; }
-
-pub fn language_markdown() -> tree_sitter::Language {
-    unsafe { tree_sitter_markdown() }
-}
+use crate::c_exports::HLLib;
+use crate::conversions::load_hlconfig;
 
 pub struct LoadedHLLib {
     // --- kept for lifetimes
@@ -46,24 +39,5 @@ pub fn load_hl_lib<'a>(path: PathBuf) -> Result<LoadedHLLib, Box<dyn std::error:
             _hl: hl,
             config
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-
-        println!("{}", std::env::current_dir().unwrap().display());
-
-        let rust_lib = "mdnya_hl_rust.dll";
-        let rust_lib_path = std::env::current_dir().unwrap().join("..").join("target").join("debug").join(rust_lib);
-        println!("{}", rust_lib_path.display());
-        let result = load_hl_lib(rust_lib.into());
-        // assert_eq!(result.unwrap().name(), "rust");
-        println!("{:?}", result.unwrap().config.query.pattern_count());
-
     }
 }

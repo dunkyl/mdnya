@@ -163,6 +163,7 @@ name = "mdnya-hl"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "libloading",
  "regex",
  "serde",
  "tree-sitter",
@@ -174,8 +175,9 @@ name = "mdnya-hl-rust"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "cc",
+ "mdnya-hl",
  "mdnya-hl-rust-gen",
+ "tree-sitter-highlight",
 ]
 
 [[package]]
