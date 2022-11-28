@@ -329,6 +329,9 @@ pub fn render_into(src: &[u8], cursor: &mut TreeCursor, putter: &mut HtmlHelper,
             ("tight_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("loose_list", NodeBehavior::new(false, Full, 0, decide_list_type)),
             ("fenced_code_block", NodeBehavior::new(false, Full, 0, render_code_block)),
+
+            // TODO: never has info_string, so never gets highlighted.
+            // consider formatting like Obsidian.
             ("indented_code_block", NodeBehavior::new(false, Full, 0, render_code_block)),
         ].iter().cloned().collect();
 

@@ -2,72 +2,28 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+macro_rules! decorate_all {
+    ($( #[$attrs:meta] )* ... ) => { };
+    ($( #[$attrs:meta] )* ... $struct:item $($structs:item)*) => {
+        $( #[$attrs] )*
+        $struct
+        decorate_all!($( #[$attrs] )* ... $($structs)*);
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Placeholder {
     _unused: [u8; 4],
 }
 
-#[derive(Serialize, Deserialize)]
-#[repr(transparent)]
-pub struct PtrPlaceholder {
-    _unused: [u8; std::mem::size_of::<&Placeholder>()],
-}
-
-pub mod c_types {
+pub mod c_types { // c types from tree-sitter
     use std::fmt;
 
     use serde::{ser::SerializeSeq, de::{Visitor, SeqAccess}};
 
     use super::*;
 
-    #[repr(C)]
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    struct TSSymbol(u16);
-
-    #[repr(C)]
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    struct TSFieldId(u16);
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    struct TSFieldMapEntry {
-        field_id: TSFieldId,
-        child_index: u8,
-        inherited: bool,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    struct TSFieldMapSlice {
-        index: u16,
-        length: u16,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    struct TSSymbolMetadata {
-        visible: bool,
-        named: bool,
-        supertype: bool,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    struct Entry {
-        count: u8,
-        reusable: bool,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    pub struct TSLanguage {}
-
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    struct Slice {
-        offset: u32,
-        length: u32,
-    }
+    const MAX_STEP_CAPTURE_COUNT: usize = 3;
 
     #[derive(Clone, Copy)]
     #[repr(C)]
@@ -77,18 +33,10 @@ pub mod c_types {
         pub capacity: u32,
     }
 
-    // impl<T> Drop for TSArray<T> {
-        
-    // }
-
-    impl<T> Serialize for TSArray<T>
-    where
-        T: Serialize + Copy,
+    impl<T> Serialize for TSArray<T> where T: Serialize + Copy,
     {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
+        where S: serde::Serializer, {
             let mut seq = serializer.serialize_seq(Some(self.size as usize))?;
             for i in 0..self.size {
                 seq.serialize_element(&unsafe { *self.contents.offset(i as isize) })?;
@@ -97,13 +45,10 @@ pub mod c_types {
         }
     }
 
-    impl<'de, T> Deserialize<'de> for TSArray<T>
-    where
-        T: Deserialize<'de >,
+    impl<'de, T> Deserialize<'de> for TSArray<T> where T: Deserialize<'de >,
     {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de> {
+        where D: serde::Deserializer<'de> {
 
             struct TSArrayVisitor<T> { _unused: std::marker::PhantomData<T> }
 
@@ -138,86 +83,92 @@ pub mod c_types {
                     })
                 }
             } 
-            deserializer.deserialize_seq(TSArrayVisitor{ _unused: std::marker::PhantomData{}})
+            deserializer.deserialize_seq(TSArrayVisitor{_unused: std::marker::PhantomData{}})
         }
     }
 
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    struct SymbolTable {
-        characters: TSArray<u8>,
-        slices: TSArray<Slice>,
-    }
-
-    const MAX_STEP_CAPTURE_COUNT: usize = 3;
-
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    pub struct QueryStep {
-        symbol: TSSymbol,
-        supertype_symbol: TSSymbol,
-        field: TSFieldId,
-        capture_ids: [u16; MAX_STEP_CAPTURE_COUNT],
-        depth: u16,
-        alternative_index: u16,
-        negated_field_list_id: u16,
-        _flags_1: u8,
-        _flags_2: u8,
-    }
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    struct CaptureQuantifiers(TSArray<u8>);
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    pub struct PatternEntry {
-        step_index: u16,
-        pattern_index: u16,
-        is_rooted: bool,
-    }
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    struct QueryPattern {
-        steps: Slice,
-        predicate_steps: Slice,
-        start_byte: u32,
-    }
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    struct StepOffset {
-        byte_offset: u32,
-        step_index: u16,
-    }
-
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    enum TSQueryPredicateStepType {
-        TSQueryPredicateStepTypeDone,
-        TSQueryPredicateStepTypeCapture,
-        TSQueryPredicateStepTypeString,
-    }
-    #[derive(Serialize, Deserialize, Clone, Copy)]
-    #[repr(C)]
-    struct TSQueryPredicateStep {
-        type_: TSQueryPredicateStepType,
-        value_id: u32,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    #[repr(C)]
-    pub struct TSQuery {
-        captures: SymbolTable,
-        capture_quantifiers: TSArray<CaptureQuantifiers>,
-        predicate_values: SymbolTable,
-        pub steps: TSArray<QueryStep>,
-        pub pattern_map: TSArray<PatternEntry>,
-        predicate_steps: TSArray<TSQueryPredicateStep>,
-        patterns: TSArray<QueryPattern>,
-        step_offsets: TSArray<StepOffset>,
-        negated_fields: TSArray<TSFieldId>,
-        string_buffer: TSArray<char>,
-        pub language: usize, //*const TSLanguage,
-        pub wildcard_root_pattern_count: u16,
+    decorate_all!{
+        #[derive(Serialize, Deserialize, Clone, Copy)]
+        #[repr(C)]
+        ...
+        struct TSSymbol(u16);
+        struct TSFieldId(u16);
+        struct TSFieldMapEntry {
+            field_id: TSFieldId,
+            child_index: u8,
+            inherited: bool,
+        }
+        struct TSFieldMapSlice {
+            index: u16,
+            length: u16,
+        }
+        struct TSSymbolMetadata {
+            visible: bool,
+            named: bool,
+            supertype: bool,
+        }
+        struct Entry {
+            count: u8,
+            reusable: bool,
+        }
+        pub struct TSLanguage {}
+        struct Slice {
+            offset: u32,
+            length: u32,
+        }
+        struct SymbolTable {
+            characters: TSArray<u8>,
+            slices: TSArray<Slice>,
+        }
+        pub struct QueryStep {
+            symbol: TSSymbol,
+            supertype_symbol: TSSymbol,
+            field: TSFieldId,
+            capture_ids: [u16; MAX_STEP_CAPTURE_COUNT],
+            depth: u16,
+            alternative_index: u16,
+            negated_field_list_id: u16,
+            _flags_1: u8,
+            _flags_2: u8,
+        }
+        struct CaptureQuantifiers(TSArray<u8>);
+        pub struct PatternEntry {
+            step_index: u16,
+            pattern_index: u16,
+            is_rooted: bool,
+        }
+        struct QueryPattern {
+            steps: Slice,
+            predicate_steps: Slice,
+            start_byte: u32,
+        }
+        struct StepOffset {
+            byte_offset: u32,
+            step_index: u16,
+        }
+        enum TSQueryPredicateStepType {
+            TSQueryPredicateStepTypeDone,
+            TSQueryPredicateStepTypeCapture,
+            TSQueryPredicateStepTypeString,
+        }
+        struct TSQueryPredicateStep {
+            type_: TSQueryPredicateStepType,
+            value_id: u32,
+        }
+        pub struct TSQuery {
+            captures: SymbolTable,
+            capture_quantifiers: TSArray<CaptureQuantifiers>,
+            predicate_values: SymbolTable,
+            pub steps: TSArray<QueryStep>,
+            pub pattern_map: TSArray<PatternEntry>,
+            predicate_steps: TSArray<TSQueryPredicateStep>,
+            patterns: TSArray<QueryPattern>,
+            step_offsets: TSArray<StepOffset>,
+            negated_fields: TSArray<TSFieldId>,
+            string_buffer: TSArray<char>,
+            pub language: usize, //*const TSLanguage,
+            pub wildcard_root_pattern_count: u16,
+        }
     }
 }
 
@@ -225,81 +176,68 @@ pub mod c_types {
 #[derive(Serialize)]
 pub struct Language<'a>(&'a Placeholder);
 
-#[derive(Serialize, Deserialize)]
-pub struct RegexPlaceholder {
-    ro: Arc<Placeholder>,
-    pool: Box<Placeholder>,
-}
+decorate_all!{ // private types from tree-sitter-highlight
+    #[derive(Serialize, Deserialize)]
+    ...
+    pub struct RegexPlaceholder {
+        ro: Arc<Placeholder>,
+        pool: Box<Placeholder>,
+    }
+    pub enum CaptureQuantifier {
+        Zero,
+        ZeroOrOne,
+        ZeroOrMore,
+        One,
+        OneOrMore,
+    }
+    pub enum TextPredicate {
+        CaptureEqString(u32, String, bool),
+        CaptureEqCapture(u32, u32, bool),
+        CaptureMatchString(u32, RegexPlaceholder, bool),
+    }
+    pub enum QueryPredicateArg {
+        Capture(u32),
+        String(Box<str>),
+    }
+    pub struct QueryPredicate {
+        pub operator: Box<str>,
+        pub args: Vec<QueryPredicateArg>,
+    }
+    pub struct QueryProperty {
+        pub key: Box<str>,
+        pub value: Option<Box<str>>,
+        pub capture_id: Option<usize>,
+    }
+    pub struct PtrTSQuery {
+        _unused: [u8; std::mem::size_of::<*const c_types::TSQuery>()]
+    }
+    pub struct Query {
+        pub ptr: usize,//,Box<c_types::TSQuery>,//&'a [u8],//c_types::TSQuery, //'static u8, //c_types::TSQuery,//PtrTSQuery,
+        capture_names: Vec<String>,
+        capture_quantifiers: Vec<Vec<CaptureQuantifier>>,
+        pub text_predicates: Vec<Box<[TextPredicate]>>,
+        property_settings: Vec<Box<[QueryProperty]>>,
+        property_predicates: Vec<Box<[(QueryProperty, bool)]>>,
+        general_predicates: Vec<Box<[QueryPredicate]>>,
+    }
 
-#[derive(Serialize, Deserialize)]
-pub enum CaptureQuantifier {
-    Zero,
-    ZeroOrOne,
-    ZeroOrMore,
-    One,
-    OneOrMore,
-}
+    pub struct Highlight(usize);
 
-#[derive(Serialize, Deserialize)]
-pub enum TextPredicate {
-    CaptureEqString(u32, String, bool),
-    CaptureEqCapture(u32, u32, bool),
-    CaptureMatchString(u32, RegexPlaceholder, bool),
-}
-
-#[derive(Serialize, Deserialize)]
-pub enum QueryPredicateArg {
-    Capture(u32),
-    String(Box<str>),
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct QueryPredicate {
-    pub operator: Box<str>,
-    pub args: Vec<QueryPredicateArg>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct QueryProperty {
-    pub key: Box<str>,
-    pub value: Option<Box<str>>,
-    pub capture_id: Option<usize>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PtrTSQuery {
-    _unused: [u8; std::mem::size_of::<*const c_types::TSQuery>()]
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Query {
-    pub ptr: usize,//,Box<c_types::TSQuery>,//&'a [u8],//c_types::TSQuery, //'static u8, //c_types::TSQuery,//PtrTSQuery,
-    capture_names: Vec<String>,
-    capture_quantifiers: Vec<Vec<CaptureQuantifier>>,
-    pub text_predicates: Vec<Box<[TextPredicate]>>,
-    property_settings: Vec<Box<[QueryProperty]>>,
-    property_predicates: Vec<Box<[(QueryProperty, bool)]>>,
-    general_predicates: Vec<Box<[QueryPredicate]>>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Highlight(usize);
-
-#[derive(Serialize, Deserialize)]
-pub struct HighlightConfiguration {
-    pub language: usize, //*const TSLanguage (aliased by transparent Langauge),
-    pub query: Query,
-    combined_injections_query: Option<Query>,
-    locals_pattern_index: usize,
-    highlights_pattern_index: usize,
-    highlight_indices: Vec<Option<Highlight>>,
-    non_local_variable_patterns: Vec<bool>,
-    injection_content_capture_index: Option<u32>,
-    injection_language_capture_index: Option<u32>,
-    local_scope_capture_index: Option<u32>,
-    local_def_capture_index: Option<u32>,
-    local_def_value_capture_index: Option<u32>,
-    local_ref_capture_index: Option<u32>,
+    pub struct HighlightConfiguration {
+        pub language: usize, //*const TSLanguage (aliased by transparent Langauge),
+        pub query: Query,
+        combined_injections_query: Option<Query>,
+        locals_pattern_index: usize,
+        highlights_pattern_index: usize,
+        highlight_indices: Vec<Option<Highlight>>,
+        non_local_variable_patterns: Vec<bool>,
+        injection_content_capture_index: Option<u32>,
+        injection_language_capture_index: Option<u32>,
+        local_scope_capture_index: Option<u32>,
+        local_def_capture_index: Option<u32>,
+        local_def_value_capture_index: Option<u32>,
+        local_ref_capture_index: Option<u32>,
+    }
 }
 
 pub struct IntermediateHLConf {

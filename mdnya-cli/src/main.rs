@@ -3,10 +3,6 @@ use std::{path::PathBuf, io::Write, error::Error};
 use tree_sitter::Parser;
 use clap::Parser as clapParser;
 
-// use hlconfig_pregen::generated_lang;
-
-// extern "C" { fn tree_sitter_markdown() -> tree_sitter::Language; }
-
 mod mdnya;
 mod highlight;
 
@@ -18,19 +14,19 @@ struct Options {
     input_file: PathBuf,
 
     /// HTML file to write to (default: <input>.html)
-    #[clap(short, long, name="output")]
+    #[clap(short, long="output")]
     output_file: Option<PathBuf>,
 
     /// Include closing tags for <p> and <li> elements
-    #[clap(short, long, name="close-all-tags")]
+    #[clap(short, long="close-all-tags")]
     close_all_tags: bool,
 
     /// Surround document in tags, such as 'html,body' or article. Comma separated
-    #[clap(long, name="wrap-tags", value_parser,  value_delimiter = ',')]
+    #[clap(long="wrap-tags", value_parser,  value_delimiter = ',')]
     wrap_document: Option<Vec<String>>,
 
     /// Surround text after each heading in a tag
-    #[clap(long, name="wrap-sections")]
+    #[clap(long="wrap-sections")]
     wrap_sections: Option<String>,
 
     // #[clap(short, long, name="enclose-sections", value_parser,  value_delimiter = ',')]
@@ -50,7 +46,13 @@ struct Options {
 
     /// Don't add id attributes to headings
     #[clap(long="no-ids")]
-    no_ids: bool
+    no_ids: bool,
+
+    // TODO: Add option for yielding tags (#blah) present in the document
+    //  ^ Like in Obsidian
+    /// Don't add id attributes to headings
+    #[clap(long="detect-tags")]
+    detect_tags: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
