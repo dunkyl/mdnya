@@ -8,14 +8,15 @@ use crate::c_imports::{c_types, TextPredicate, IntermediateHLConf, HighlightConf
 
 #[derive(Serialize, Deserialize)]
 pub struct PregeneratedHLConfig {
-    pub name: String,
+    // pub name: String,
     pub config: CompatHLC,
     pub regexes: Vec<String>,
     pub query_data: Vec<u8>,
     pub combined_injections_query_data: Option<Vec<u8>>,
 }
 
-pub fn generate_hlconfig(name: &str, config: TSHLC) -> PregeneratedHLConfig {
+#[cfg(feature = "generate")]
+pub fn generate_hlconfig(config: TSHLC) -> PregeneratedHLConfig {
 
     let unsafe_view_ = unsafe {
         std::mem::transmute::<_, IntermediateHLConf>(config)
@@ -58,7 +59,6 @@ pub fn generate_hlconfig(name: &str, config: TSHLC) -> PregeneratedHLConfig {
     println!("ts pattern_maps count {}, {}", ts_query.pattern_map.size, ts_query.pattern_map.capacity);
 
     PregeneratedHLConfig {
-        name: name.into(),
         config: unsafe_view,
         regexes,
         query_data,

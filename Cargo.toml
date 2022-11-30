@@ -1,2 +1,2 @@
 [workspace]
-members = ['mdnya', 'mdnya-hl-rust-gen', 'mdnya-cli', 'mdnya-hl-rust', 'mdnya-hl']
+members = ['mdnya', 'mdnya-hl-langs/rust-gen', 'mdnya-cli', 'mdnya-hl-langs/rust', 'mdnya-hl']

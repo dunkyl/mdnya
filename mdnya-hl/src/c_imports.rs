@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 macro_rules! decorate_all {
-    ($( #[$attrs:meta] )* ... ) => { };
+    ($( #[$attrs:meta] )* ... ) => { /* Terminal case */ };
     ($( #[$attrs:meta] )* ... $struct:item $($structs:item)*) => {
         $( #[$attrs] )*
         $struct

@@ -16,7 +16,7 @@ html-escape = "0.2.11"
 # hlconfig-pregen = { path = "../hlconfig-pregen" }
 mdnya = { path = "../mdnya" }
 
-mdnya-hl-rust = { path = "../mdnya-hl-rust" }
+mdnya-hl-rust = { path = "../mdnya-hl-langs/rust" }
 
 [build-dependencies]
 cc = "*"

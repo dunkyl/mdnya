@@ -15,5 +15,6 @@ bincode = "1"
 libloading = { version = "0.7", optional = true }
 
 [features]
-default = ["dynamic"]
+default = ["dynamic", "generate"]
 dynamic = ["libloading"]
+generate = []

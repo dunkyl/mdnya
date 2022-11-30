@@ -1,4 +1,4 @@
-# This is the Title
+# This is *the* Title
 
 Here is some *text*. It is in a paragraph with two sentences, the second one has a [link](https://google.com) to google.
 
