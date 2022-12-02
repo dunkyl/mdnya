@@ -64,22 +64,22 @@ pub fn configure_tshlc(lang: tree_sitter::Language, hql: &str) -> Result<TSHLC, 
     Ok(conf)
 }
 
-fn highlight(source: &[u8], cfg: &TSHLC ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn highlight(source: &[u8], cfg: &TSHLC ) -> Result<String, Box<dyn std::error::Error>> {
     let mut tshl = tree_sitter_highlight::Highlighter::new();
     let hl = tshl.highlight(cfg, source, None, |_| None)?;
     let mut renderer = tree_sitter_highlight::HtmlRenderer::new();
     renderer.render(hl, source, &|hl| HL_CLASSES[hl.0].as_bytes())?;
-    Ok(renderer.html)
+    Ok(String::from_utf8(renderer.html)?)
 }
 
 pub trait CodeHighlighter {
-    fn highlight(&self, text: &[u8]) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn highlight(&self, text: &[u8]) -> Result<String, Box<dyn Error>>;
     fn aliases(&self) -> Vec<&str>;
     fn name(&self) -> &str;
 }
 
 impl CodeHighlighter for TSHLang {
-    fn highlight(&self, text: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn highlight(&self, text: &[u8]) -> Result<String, Box<dyn Error>> {
         match self {
             TSHLang::Dynamic(hl) => highlight(text, hl.get_config()),
             TSHLang::Static(_, _, hl) => highlight(text, hl),

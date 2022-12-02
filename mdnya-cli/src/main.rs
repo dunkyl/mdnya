@@ -1,10 +1,7 @@
 use std::{path::PathBuf, io::Write, error::Error};
 
-use tree_sitter::Parser;
+use mdnya::MDNya;
 use clap::Parser as clapParser;
-
-mod mdnya;
-mod highlight;
 
 #[derive(clapParser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -57,15 +54,11 @@ struct Options {
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    // std::env::set_var("RUST_BACKTRACE", "1");
-
-    let mut parser = Parser::new();
-
     let opts = Options::parse();
 
     let source_code = std::fs::read(&opts.input_file).unwrap();
 
-    let mut output_writer = 
+    let output = 
         if let Some(ref path) = opts.output_file {
             if path == &PathBuf::from("stdout") {
                 Box::new(std::io::stdout()) as Box<dyn Write>
@@ -90,53 +83,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 return Err("default output file (replace .md with .html) expects a filename with a stem".into())
             }
         };
-
-    parser.set_language(::mdnya::language_markdown()).unwrap();
-
-    let time_parse_start = std::time::Instant::now();
-    let tree = parser.parse(source_code.as_slice(), None).unwrap();
-    let root_node = tree.root_node();
-    let parse_elapsed = time_parse_start.elapsed();
-    if opts.verbose {
-        println!("parse time: {:?}", parse_elapsed);
-    }
-
-    let time_write_start = std::time::Instant::now();
     
-    let mut cur = root_node.walk();
-    let mut putter = mdnya::HtmlHelper {
-        is_inline: false,
-        indent_level: 0,
-        close_tags: opts.close_all_tags,
-        extra_heading_level: opts.heading_level,
-        wrap_sections: opts.wrap_sections,
-        last_heading_level: 0,
-        last_elem_was_header: false,
-        omit_header_id: opts.no_ids,
-        inside_section: false,
-    };
-    if let Some(tags) = &opts.wrap_document {
-        for tag in tags {
-            putter.start_tag(&mut output_writer, tag, &[], true)?;
-            putter.indent_level += 1;
-        }
-    }
+    let time_write_start = std::time::Instant::now();
 
-    println!("{}", root_node.to_sexp());
-
-    cur.goto_first_child();
-    mdnya::render_into(
-        source_code.as_slice(),
-        &mut cur, 
-        &mut putter,
-        &mut output_writer
-    )?;
-    if let Some(tags) = &opts.wrap_document {
-        for tag in tags {
-            putter.end_tag(&mut output_writer, tag)?;
-            putter.indent_level -= 1;
-        }
-    }
+    let mut mdnya = MDNya::new(false, Some("section".into()), 1, false);
+    mdnya.add_highlighter(mdnya_hl_rust::hl_static());
+    mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();
     if opts.verbose {

@@ -65,8 +65,8 @@ fn main() {
 A way to make it not panic would be to use `println!()` instead of `panic!()`.
 
 
-| Tables | Are | Cool |
-|--------|-----|------|
+| Tables |  Are  | Cool  |
+|--------|-------|-------|
 | col 1  | col 2 | col 3 |
 | col 4  | col 5 | col 6 |
 

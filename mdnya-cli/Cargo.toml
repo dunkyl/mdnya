@@ -13,10 +13,11 @@ regex = "1"
 lazy_static = "1.4.0"
 html-escape = "0.2.11"
 
-# hlconfig-pregen = { path = "../hlconfig-pregen" }
 mdnya = { path = "../mdnya" }
 
 mdnya-hl-rust = { path = "../mdnya-hl-langs/rust" }
+mdnya-hl-bash = { path = "../mdnya-hl-langs/bash" }
+mdnya-hl-csharp = { path = "../mdnya-hl-langs/csharp" }
 
 [build-dependencies]
 cc = "*"

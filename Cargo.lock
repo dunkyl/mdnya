@@ -138,8 +138,11 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "html-escape",
+ "lazy_static",
  "mdnya-hl",
+ "mdnya-hl-rust",
  "phf",
+ "regex",
  "tree-sitter",
 ]
 
@@ -152,6 +155,8 @@ dependencies = [
  "html-escape",
  "lazy_static",
  "mdnya",
+ "mdnya-hl-bash",
+ "mdnya-hl-csharp",
  "mdnya-hl-rust",
  "regex",
  "tree-sitter",
@@ -168,6 +173,42 @@ dependencies = [
  "serde",
  "tree-sitter",
  "tree-sitter-highlight",
+]
+
+[[package]]
+name = "mdnya-hl-bash"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "mdnya-hl",
+ "mdnya-hl-bash-gen",
+]
+
+[[package]]
+name = "mdnya-hl-bash-gen"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "mdnya-hl",
+ "tree-sitter",
+]
+
+[[package]]
+name = "mdnya-hl-csharp"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "mdnya-hl",
+ "mdnya-hl-csharp-gen",
+]
+
+[[package]]
+name = "mdnya-hl-csharp-gen"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "mdnya-hl",
+ "tree-sitter",
 ]
 
 [[package]]
