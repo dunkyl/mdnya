@@ -12,10 +12,35 @@ It would produce a file named `README.html` in the same directory.
 
 TODO: libary usage
 
+## Quirks you might like
+
+ - By default, `<p>` and `<li>` tags are not closed
+ - li elements do not contain a `<p>` tag
+ - indented code blocks are treaded instead as indented text
+ - An option to wrap the elements between headers in a `<section>` or other tag
+ - Headers get their content added as an id attribute, so you can link to them
+    - With some care to respect Razor syntax, for anything such as `@ViewData["Title"]`
+ - TODO: parse with Razor to preserve all Razor syntax, such as @{ } blocks and @model directives
+ - Language highlighters can be loaded dynamically as plugins
+ - TODO: hashtags are formatted and can be scraped from the document
+ - highlight configuration is pre-calculated at compile time for both statically linked and dynamically loaded syntax highlighters, which can speed up processing time for small documents considerably
+
 ## Extensions
 
-Git markdown extensions are supported. In addition to the following:
+Git markdown extensions are supported, such as:
+ - checkboxes in lists
+ - tables
+
+In addition to the following:
  - Admonitions for code blocks
+
+The syntax for admonitions is:
+````md
+```{kind} An optional custom title
+    The text that shows inside!
+```
+````
+Where `kind` can be any class. The HTML div for this admonition will have the classes `admonition kind`.
 
 ---
 
@@ -23,6 +48,11 @@ Git markdown extensions are supported. In addition to the following:
 
 Tree Sitter Language(s):
  - Markdown (REQUIRED) - [tree-sitter-markdown](https://github.com/ikatyang/tree-sitter-markdown) by ikatyang
+ If building mdnya-cli, by default it statically links the following languages for syntax highlighting:
+    - C#
+    - Rust
+    - Bash
+    TODO: add more languages
 
 Other parsers will be used inside code blocks for highlighting. Clone each parser repo into the `mdnya-hl-langs/tree-sitters` directory.
 

@@ -1,3 +1,8 @@
+@{
+    ViewBag.Title = "Test";
+    Model.Y = Model.X == "`what`";
+}
+
 # This is *the* Title
 
 Here is some *text*. It is in a paragraph with two sentences, the second one has a [link](https://google.com) to google.
@@ -76,3 +81,6 @@ Here is an indented block:
         and i can be indented even more!
 
 This is very strange.
+
+TODO: html tag elements
+TODO: wiki-links
