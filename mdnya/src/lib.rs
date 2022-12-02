@@ -223,6 +223,18 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
     Ok(())
 }
 
+fn table_cell_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+    let node = cur.node();
+    let is_header = node.parent().unwrap().kind() == "table_header_row";
+    let tag = if is_header { "th" } else { "td" };
+    m.render_elem_seq(helper, true, &Full(&tag), cur, src, &[], state)
+}
+
+fn slb_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+    helper.write_text("\n")?;
+    Ok(())
+}
+
 static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
     "document" => Simple { tag: NoTags, inline: false, attrs: &[] },
     "atx_heading" => Custom(heading_transform),
@@ -244,12 +256,19 @@ static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
     "task_list_item_marker" => Custom(checkbox_transform),
     "fenced_code_block" => Custom(codeblock_transform),
 
+    // TODO: like obsidian
+    "indented_code_block" => Simple {tag: Full("aside"), inline: true, attrs: &[] },
+
     "table" => Simple {tag: Full("table"), inline: false, attrs: &[] },
     "table_header_row" => Simple {tag: Full("tr"), inline: false, attrs: &[("class", Some("header"))] },
     "table_data_row" => Simple {tag: Full("tr"), inline: false, attrs: &[] },
-    "table_cell" => Simple {tag: Full("td"), inline: true, attrs: &[] },
+    "table_cell" => Custom(table_cell_transform),
 
     "table_delimiter_row" => Skip,
+
+    "line_break" => Simple {tag: SelfClose("br"), inline: false, attrs: &[] },
+    "soft_line_break" => Custom(slb_transform),
+
     // skipped by custom transforms:
     // list_marker, atx_hX_marker,link_dest, link_text, image_dest, image_text
 };
@@ -285,7 +304,7 @@ impl MDNya {
         let node = cur.node();
         let kind = node.kind();
         let behave = MD_TRANSFORMERS.get(kind).unwrap_or_else(|| {
-            println!("\n--- s-expr:\n{}\n---\n", node.to_sexp());
+            println!("\n--- s-expr:\n{}\n---\n", node.parent().unwrap_or(node).to_sexp());
             panic!("{}", kind)
         });
         match behave {
@@ -337,7 +356,7 @@ impl MDNya {
         Ok(if switched_inline {
             helper.exit_inline()?;
             if let Some(next) = cur.node().next_sibling() {
-                if next.kind() != "atx_heading"{
+                if cur.node().kind() == "paragraph" && next.kind() != "atx_heading"{
                     helper.write_html("\n")?;
                 }
             }

@@ -70,3 +70,9 @@ A way to make it not panic would be to use `println!()` instead of `panic!()`.
 | col 1  | col 2 | col 3 |
 | col 4  | col 5 | col 6 |
 
+Here is an indented block:
+
+    hello, im an indented block ☺️
+        and i can be indented even more!
+
+This is very strange.
