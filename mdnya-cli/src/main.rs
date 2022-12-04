@@ -26,9 +26,6 @@ struct Options {
     #[clap(long="wrap-sections")]
     wrap_sections: Option<String>,
 
-    // #[clap(short, long, name="enclose-sections", value_parser,  value_delimiter = ',')]
-    // enclose_sections: Option<String>,
-
     /// Show times
     #[clap(short, long)]
     verbose: bool,
@@ -86,8 +83,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let time_write_start = std::time::Instant::now();
 
-    let mut mdnya = MDNya::new(false, Some("section".into()), 1, false);
+    let mut mdnya = MDNya::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, opts.no_ids);
+    
     mdnya.add_highlighter(mdnya_hl_rust::hl_static());
+    mdnya.add_highlighter(mdnya_hl_bash::hl_static());
+    mdnya.add_highlighter(mdnya_hl_csharp::hl_static());
+    
     mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();

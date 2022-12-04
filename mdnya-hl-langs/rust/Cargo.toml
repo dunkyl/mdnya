@@ -15,6 +15,6 @@ mdnya-hl-rust-gen = { path = "../rust-gen" }
 bincode = "1.3"
 
 [features]
-default = ["dynamic", "static"]
+default = ["static"]
 dynamic = [ "mdnya-hl/dynamic" ]
 static = []

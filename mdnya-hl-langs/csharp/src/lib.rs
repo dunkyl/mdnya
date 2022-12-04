@@ -7,7 +7,7 @@ use mdnya_hl_csharp_gen::*;
 const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/csharp.hlconfig"));
 
 const NAME: &str = "csharp";
-const ALIASES : &[&str] = &["cs"];
+const ALIASES : &[&str] = &["cs", "c#"];
 
 #[cfg(feature = "dynamic")]
 #[no_mangle]

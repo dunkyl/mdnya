@@ -84,3 +84,7 @@ This is very strange.
 
 TODO: html tag elements
 TODO: wiki-links
+
+```sh
+ffmpeg -i "my input video.mp4" -vf scale=1920:1080 -sws_flags neighbor "my output video.mp4"
+```

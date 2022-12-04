@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    'ts-builder',
     'mdnya',
     'mdnya-cli',
     'mdnya-hl',

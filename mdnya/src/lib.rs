@@ -31,6 +31,7 @@ pub struct MDNya {
     wrap_sections: Option<String>,
     heading_level: u8,
     no_ids: bool,
+    no_code_lines: bool,
 }
 
 struct MDNyaState {
@@ -78,7 +79,7 @@ fn heading_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut h
                 if heading_content.starts_with('@')  {
                     heading_content.to_string()
                 } else {
-                    heading_content.to_lowercase().replace(" ", "-")
+                    heading_content.to_lowercase().replace(" ", "-").replace("?", "")
                 };
                 vec![("id", Some(id))]
         };
@@ -190,7 +191,7 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
                     to_title_case(class)
                 }
             };
-            helper.start_tag(&"div", &[("class", Some(format!("admonion {class}")))])?;
+            helper.start_tag(&"div", &[("class", Some(format!("admonition {class}")))])?;
             helper.push_elem(&["h3"], title)?;
             helper.push_elem(&["p"], content)?;
             helper.end_tag(&"div")?;
@@ -201,11 +202,22 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
             helper.start_tag(&"code", &[])?;
 
             let highligher = m.try_get_highlighter(info);
+            let add_code_lines = 
+                if m.no_code_lines {
+                    |text: &str| text.trim_end().to_string()
+                } else {
+                    |text: &str| {
+                        text.trim_end().split('\n').map(|line| {
+                            format!("<span class=\"code-line\">{line}</span>")
+                        }).collect::<Vec<_>>().join("\n")
+                    }
+                };
 
             if let Some(hl) = highligher {
-                helper.write_html(hl.highlight(content.as_bytes())?)?;
+                helper.write_html(add_code_lines(hl.highlight(content.as_bytes())?.as_str()))?;
             } else {
-                helper.write_text(content)?;
+                println!("no highlight");
+                helper.write_html(add_code_lines(&html_escape::encode_text(content)))?;
             };
             
             helper.end_tag(&"code")?;
@@ -281,7 +293,8 @@ impl MDNya {
             close_all_tags,
             wrap_sections,
             heading_level,
-            no_ids
+            no_ids,
+            no_code_lines: false
         }
     }
 
@@ -295,7 +308,7 @@ impl MDNya {
     }
 
     fn try_get_highlighter(&self, name: impl AsRef<str>) -> Option<&TSHLang> {
-        let name_str = name.as_ref().to_string();
+        let name_str = name.as_ref().to_lowercase();
         let name_str = self.highlighters_aliases.get(&name_str).unwrap_or(&name_str);
         self.highlighters.get(name_str)
     }
