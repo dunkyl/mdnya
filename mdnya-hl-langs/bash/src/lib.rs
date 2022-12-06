@@ -1,13 +1,17 @@
-use mdnya_hl::HLLib;
+// use mdnya_hl::HLLib;
 use mdnya_hl::TSHLang;
 use mdnya_hl::load_hlconfig;
 
-use mdnya_hl_bash_gen::*;
+#[link(name="tree-sitter-bash", kind="static")]
+extern "C" { fn tree_sitter_bash() -> tree_sitter::Language; }
+fn get_language() -> tree_sitter::Language { unsafe { tree_sitter_bash() } }
 
-const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bash.hlconfig"));
+const RAW_CONFIG_DATA: &[u8] = include_bytes!(
+    "../../../tree-sitter-builds/bash.hlconfig"
+);
 
 const NAME: &str = "bash";
-const ALIASES : &[&str] = &["sh"];
+const ALIASES : &[&str] = &["sh", "shell"];
 
 #[cfg(feature = "dynamic")]
 #[no_mangle]

@@ -7,12 +7,13 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+tree-sitter = "0.20"
 mdnya-hl = { path = "../../mdnya-hl" }
-mdnya-hl-rust-gen = { path = "../rust-gen" }
+# mdnya-hl-rust-gen = { path = "../rust-gen" }
 
-[build-dependencies]
-mdnya-hl-rust-gen = { path = "../rust-gen" }
-bincode = "1.3"
+# [build-dependencies]
+# mdnya-hl-rust-gen = { path = "../rust-gen" }
+# bincode = "1.3"
 
 [features]
 default = ["static"]

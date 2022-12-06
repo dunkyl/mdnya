@@ -1,13 +1,10 @@
 [workspace]
 members = [
-    'ts-builder',
+    'tree-sitter-build',
     'mdnya',
     'mdnya-cli',
     'mdnya-hl',
     'mdnya-hl-langs/bash',
-    'mdnya-hl-langs/bash-gen',
     'mdnya-hl-langs/csharp',
-    'mdnya-hl-langs/csharp-gen',
     'mdnya-hl-langs/rust',
-    'mdnya-hl-langs/rust-gen',
 ]

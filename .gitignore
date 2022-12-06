@@ -1,4 +1,6 @@
 /target
-/mdnya-hl-langs/tree-sitters
+/tree-sitters
 *.html
 *.dll
+*.obj
+/tree-sitter-builds

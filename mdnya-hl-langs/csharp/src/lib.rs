@@ -1,10 +1,17 @@
-use mdnya_hl::HLLib;
+// use mdnya_hl::HLLib;
 use mdnya_hl::TSHLang;
 use mdnya_hl::load_hlconfig;
 
-use mdnya_hl_csharp_gen::*;
+#[link(name="tree-sitter-csharp", kind="static")]
+extern "C" { fn tree_sitter_c_sharp() -> tree_sitter::Language; }
+fn get_language() -> tree_sitter::Language { unsafe { tree_sitter_c_sharp() } }
 
-const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/csharp.hlconfig"));
+const RAW_CONFIG_DATA: &[u8] = include_bytes!(
+    "../../../tree-sitter-builds/csharp.hlconfig"
+);
+
+
+// const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/csharp.hlconfig"));
 
 const NAME: &str = "csharp";
 const ALIASES : &[&str] = &["cs", "c#"];

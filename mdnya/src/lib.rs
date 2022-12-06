@@ -268,8 +268,7 @@ static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
     "task_list_item_marker" => Custom(checkbox_transform),
     "fenced_code_block" => Custom(codeblock_transform),
 
-    // TODO: like obsidian
-    "indented_code_block" => Simple {tag: Full("aside"), inline: true, attrs: &[] },
+    "indented_code_block" => Simple {tag: Full("pre"), inline: false, attrs: &[] },
 
     "table" => Simple {tag: Full("table"), inline: false, attrs: &[] },
     "table_header_row" => Simple {tag: Full("tr"), inline: false, attrs: &[("class", Some("header"))] },

@@ -1,10 +1,19 @@
-use mdnya_hl::HLLib;
+// use mdnya_hl::HLLib;
 use mdnya_hl::TSHLang;
 use mdnya_hl::load_hlconfig;
 
-use mdnya_hl_rust_gen::*;
+// use mdnya_hl_rust_gen::*;
 
-const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rust.hlconfig"));
+// const RAW_CONFIG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rust.hlconfig"));
+
+#[link(name="tree-sitter-rust", kind="static")]
+extern "C" { fn tree_sitter_rust() -> tree_sitter::Language; }
+fn get_language() -> tree_sitter::Language { unsafe { tree_sitter_rust() } }
+
+const RAW_CONFIG_DATA: &[u8] = include_bytes!(
+    "../../../tree-sitter-builds/csharp.hlconfig"
+);
+
 
 const NAME: &str = "rust";
 const ALIASES : &[&str] = &["rs"];
