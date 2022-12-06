@@ -19,7 +19,8 @@ fn main() {
 
     let src = opts.input_dir.join("src");
     let output_dir = PathBuf::from(".").join("tree-sitter-builds");
-    let output = output_dir.join(format!("tree-sitter-{}.dll", lang_name));
+    let outputdll = output_dir.join(format!("tree-sitter-{}.dll", lang_name));
+    // let outputlib = output_dir.join(format!("tree-sitter-{}.lib", lang_name));
 
     let scanner = 
         if src.join("scanner.c").exists() {
@@ -34,10 +35,19 @@ fn main() {
         scanner.to_string_lossy().into(),
         src.join("parser.c").to_string_lossy().into(),
         "/LD".into(),
-        format!("/Fe:{}", output.to_string_lossy()),
-        "/link".into()
+        format!("/Fe:{}", outputdll.to_string_lossy()),
+        "/link".into(),
+        
     ];
     let cl_cmd = cl_args.iter().cloned().collect::<Vec<_>>().join(" ");
+
+    // let lib_args = [
+    //     "lib".into(),
+    //     "parser.obj".into(),
+    //     "scanner.obj".into(),
+    //     format!("/OUT:{}", outputlib.to_string_lossy()),
+    // ];
+    // let lib_cmd = lib_args.iter().cloned().collect::<Vec<_>>().join(" ");
 
     println!("cl_cmd: {cl_cmd}");
 
@@ -45,7 +55,7 @@ fn main() {
 
     let build_result = std::process::Command::new("cmd")
         .raw_arg("/c")
-        .raw_arg(format!(r#""{vcvars}" && {cl_cmd}"#))
+        .raw_arg(format!(r#""{vcvars}" && {cl_cmd}"#)) //  && {lib_cmd}
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .output();
@@ -59,11 +69,11 @@ fn main() {
     }
 
     let hash_path = output_dir.join(format!("tree-sitter-{}.sha256", lang_name));
-    let hash = sha256::try_digest(output.as_ref()).unwrap();
+    let hash = sha256::try_digest(outputdll.as_ref()).unwrap();
     std::fs::write(hash_path, hash).unwrap();
 
     let library = unsafe {
-        libloading::Library::new(output).unwrap()
+        libloading::Library::new(outputdll).unwrap()
     };
 
     let language =

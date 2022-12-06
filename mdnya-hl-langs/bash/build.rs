@@ -1,4 +1,13 @@
+use std::path::PathBuf;
+
 fn main() {
-    println!("cargo:rustc-link-search=tree-sitter-builds");
-    println!("cargo:rustc-link-lib=tree-sitter-bash");
+    
+    let ts_md_path: &PathBuf = &["..", "tree-sitters", "tree-sitter-bash", "src"].iter().collect();
+
+    // println!("cargo:rerun-if-changed={:?}", ts_md_path);
+    cc::Build::new()
+        .include(ts_md_path)
+        .file(ts_md_path.join("parser.c"))
+        .file(ts_md_path.join("scanner.cc"))
+        .compile("tree-sitter-bash");
 }

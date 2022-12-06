@@ -11,7 +11,7 @@ extern "C" { fn tree_sitter_rust() -> tree_sitter::Language; }
 fn get_language() -> tree_sitter::Language { unsafe { tree_sitter_rust() } }
 
 const RAW_CONFIG_DATA: &[u8] = include_bytes!(
-    "../../../tree-sitter-builds/csharp.hlconfig"
+    "../../../tree-sitter-builds/rust.hlconfig"
 );
 
 

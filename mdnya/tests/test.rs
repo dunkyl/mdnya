@@ -1,12 +1,14 @@
+use std::io::Read;
+
 extern crate mdnya;
 
 #[test]
 fn test() {
     let mut mdnya = mdnya::MDNya::new(false, Some("section".into()), 1, false);
     mdnya.add_highlighter(mdnya_hl_rust::hl_static());
-    let input = include_bytes!("../../test.md");
+    let input = std::fs::read_to_string("../test.md").unwrap();
     let output = Box::new(std::io::stdout());
-    let _ = mdnya.render(input, output);
+    let _ = mdnya.render(input.as_bytes(), output);
 }
 
 #[test]

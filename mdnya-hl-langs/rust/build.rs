@@ -1,17 +1,13 @@
-// use std::path::PathBuf;
-// use std::error::Error;
+use std::path::PathBuf;
 
-// fn main() -> Result<(), Box<dyn Error>> {
-//     Ok(
-//         bincode::serialize_into(
-//             std::fs::File::create(
-//                 PathBuf::from(std::env::var("OUT_DIR")?).join("rust.hlconfig")
-//             )?, 
-//             &mdnya_hl_rust_gen::get_config_data()
-//         )?
-//     )
-// }
 fn main() {
-    println!("cargo:rustc-link-search=tree-sitter-builds");
-    println!("cargo:rustc-link-lib=tree-sitter-rust");
+    
+    let ts_md_path: &PathBuf = &["..", "tree-sitters", "tree-sitter-rust", "src"].iter().collect();
+
+    // println!("cargo:rerun-if-changed={:?}", ts_md_path);
+    cc::Build::new()
+        .include(ts_md_path)
+        .file(ts_md_path.join("parser.c"))
+        .file(ts_md_path.join("scanner.c"))
+        .compile("tree-sitter-rust");
 }

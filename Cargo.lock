@@ -222,6 +222,7 @@ dependencies = [
 name = "mdnya-hl-bash"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "mdnya-hl",
  "tree-sitter",
 ]
@@ -230,6 +231,7 @@ dependencies = [
 name = "mdnya-hl-csharp"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "mdnya-hl",
  "tree-sitter",
 ]
@@ -238,6 +240,7 @@ dependencies = [
 name = "mdnya-hl-rust"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "mdnya-hl",
  "tree-sitter",
 ]

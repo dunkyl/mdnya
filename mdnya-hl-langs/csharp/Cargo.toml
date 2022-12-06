@@ -11,9 +11,8 @@ tree-sitter = "0.20"
 mdnya-hl = { path = "../../mdnya-hl" }
 # mdnya-hl-csharp-gen = { path = "../csharp-gen" }
 
-# [build-dependencies]
-# mdnya-hl-csharp-gen = { path = "../csharp-gen" }
-# bincode = "1.3"
+[build-dependencies]
+cc = "1"
 
 [features]
 default = ["static"]
