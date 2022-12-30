@@ -14,12 +14,12 @@ pub struct LoadedHLLib {
     _hl: HLLib,
     // ---
     // impl contains raw pointers to data in previous members
-    config: TSHLC,
+    config: &'static TSHLC,
 }
 
 impl LoadedHLLib {
     pub fn get_config(&self) -> &TSHLC {
-        &self.config
+        self.config
     }
     pub fn name(&self) -> &str {
         &self.name
@@ -29,18 +29,18 @@ impl LoadedHLLib {
     }
 }
 
-pub fn load_hl_lib<'a>(path: PathBuf) -> Result<LoadedHLLib, Box<dyn std::error::Error>> {
+pub fn load_hl_lib_impl<'a>(path: PathBuf) -> Result<LoadedHLLib, Box<dyn std::error::Error>> {
     unsafe {
+        println!("Loading {}", path.display());
         let lib = Library::new(path)?;
         let hl = {
-            let hl_lib: Symbol<unsafe extern "C" fn() -> HLLib> = lib.get(b"hl_lib\0")?;
+            let hl_lib: Symbol<unsafe extern "C" fn() -> HLLib> = lib.get(b"hl_lib")?;
             hl_lib()
         };
+        // println!("{:?}", hl);
+        let raw_config_data = std::slice::from_raw_parts(hl.config_data, hl.config_data_size);
 
-        let config = load_hlconfig(
-            std::slice::from_raw_parts(hl.config_data, hl.config_data_size),
-            &hl.language,
-        )?;
+        let config = load_hlconfig( raw_config_data, &hl.language)?;
 
         let name = String::from_utf8_lossy(
             std::slice::from_raw_parts(hl.name, hl.name_size)
@@ -62,7 +62,7 @@ pub fn load_hl_lib<'a>(path: PathBuf) -> Result<LoadedHLLib, Box<dyn std::error:
             aliases,
             _lib: lib,
             _hl: hl,
-            config
+            config: Box::leak(Box::new(config))
         })
     }
 }

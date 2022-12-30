@@ -11,7 +11,7 @@ macro_rules! decorate_all {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Placeholder {
     _unused: [u8; 4],
 }
@@ -177,7 +177,7 @@ pub mod c_types { // c types from tree-sitter
 pub struct Language<'a>(&'a Placeholder);
 
 decorate_all!{ // private types from tree-sitter-highlight
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
     ...
     pub struct RegexPlaceholder {
         ro: Arc<Placeholder>,

@@ -34,6 +34,14 @@ pub struct MDNya {
     no_code_lines: bool,
 }
 
+impl Drop for MDNya {
+    fn drop(&mut self) {
+        for (_, lang) in self.highlighters.iter() {
+            Box::leak(Box::new(lang));
+        }
+    }
+}
+
 struct MDNyaState {
     inside_section: bool,
 }
@@ -106,8 +114,8 @@ fn heading_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut h
 }
 
 fn link_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
-    let link_destination = cur.node().child(1).unwrap().utf8_text(src).unwrap();
-    helper.start_tag(&"a", &[("href", Some(link_destination.into()))])?;
+    let link_destination = cur.node().child(1).map(|c| c.utf8_text(src).unwrap().into());
+    helper.start_tag(&"a", &[("href", link_destination)])?;
     cur.goto_first_child();
     cur.goto_first_child();
     m.render_elem(src, cur, helper, state)?;

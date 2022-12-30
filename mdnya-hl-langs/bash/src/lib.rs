@@ -1,4 +1,5 @@
-// use mdnya_hl::HLLib;
+#[cfg(feature = "dynamic")]
+use mdnya_hl::HLLib;
 use mdnya_hl::TSHLang;
 use mdnya_hl::load_hlconfig;
 

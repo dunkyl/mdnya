@@ -80,7 +80,7 @@ Here is an indented block:
     hello, im an indented block ☺️
         and i can be indented even more!
 
-This is very strange.
+This is very strange. [Red Link]
 
 TODO: html tag elements
 TODO: wiki-links

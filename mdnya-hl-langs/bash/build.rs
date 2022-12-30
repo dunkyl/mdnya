@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 fn main() {
     
-    let ts_md_path: &PathBuf = &["..", "tree-sitters", "tree-sitter-bash", "src"].iter().collect();
+    let ts_md_path: &PathBuf = &["..", "..", "tree-sitters", "tree-sitter-bash", "src"].iter().collect();
 
     // println!("cargo:rerun-if-changed={:?}", ts_md_path);
     cc::Build::new()

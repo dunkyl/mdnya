@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, path::PathBuf};
 
 pub use tree_sitter_highlight::HighlightConfiguration as TSHLC;
 
@@ -70,6 +70,11 @@ fn highlight(source: &[u8], cfg: &TSHLC ) -> Result<String, Box<dyn std::error::
     let mut renderer = tree_sitter_highlight::HtmlRenderer::new();
     renderer.render(hl, source, &|hl| HL_CLASSES[hl.0].as_bytes())?;
     Ok(String::from_utf8(renderer.html)?)
+}
+
+pub fn load_hl_lib(path: impl Into<PathBuf>) -> TSHLang {
+    let hl = dynamic::load_hl_lib_impl(path.into()).unwrap();
+    TSHLang::Dynamic(hl)
 }
 
 pub trait CodeHighlighter {

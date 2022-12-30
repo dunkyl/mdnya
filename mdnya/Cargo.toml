@@ -15,4 +15,5 @@ mdnya-hl = { path = "../mdnya-hl" }
 cc = "1"
 
 [dev-dependencies]
+mdnya-hl = { path = "../mdnya-hl", features = ["dynamic"] }
 mdnya-hl-rust = { path = "../mdnya-hl-langs/rust", features=["static"] }

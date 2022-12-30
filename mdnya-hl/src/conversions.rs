@@ -6,7 +6,7 @@ use tree_sitter_highlight::HighlightConfiguration as TSHLC;
 
 use crate::c_imports::{c_types, TextPredicate, IntermediateHLConf, HighlightConfiguration as CompatHLC};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PregeneratedHLConfig {
     // pub name: String,
     pub config: CompatHLC,

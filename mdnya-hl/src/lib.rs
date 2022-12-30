@@ -12,3 +12,6 @@ pub use conversions::*;
 
 #[cfg(feature = "dynamic")]
 mod dynamic;
+
+#[cfg(feature = "dynamic")]
+pub use highlight::load_hl_lib;
