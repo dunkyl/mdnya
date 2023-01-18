@@ -57,11 +57,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let output = 
         if let Some(ref path) = opts.output_file {
+            
             if path == &PathBuf::from("stdout") {
-                Box::new(std::io::stdout()) as Box<dyn Write>
+                Box::new(std::io::BufWriter::new(std::io::stdout())) as Box<dyn Write>
             }
             else {
-                Box::new(std::fs::File::create(path)?) as Box<dyn Write>
+                Box::new(std::io::BufWriter::new(std::fs::File::create(path)?)) as Box<dyn Write>
             }
         }
         else {
@@ -74,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None => ".html",
                 };
                 let output_path = out_dir.join(stem + ext);
-                Box::new(std::fs::File::create(output_path)?) as Box<dyn Write>
+                Box::new(std::io::BufWriter::new(std::fs::File::create(output_path)?)) as Box<dyn Write>
             }
             else {
                 return Err("default output file (replace .md with .html) expects a filename with a stem".into())
