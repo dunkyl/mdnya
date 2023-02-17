@@ -90,12 +90,42 @@ fn main() -> Result<(), Box<dyn Error>> {
     mdnya.add_highlighter(mdnya_hl_bash::hl_static());
     mdnya.add_highlighter(mdnya_hl_csharp::hl_static());
     
-    mdnya.render(&source_code, output)?;
+    // mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();
     if opts.verbose {
         println!("write time: {:?}", write_elapsed);
     }
+
+    
+
+    let time_write_start2 = std::time::Instant::now();
+    
+    let source_str = std::str::from_utf8(&source_code).unwrap();
+
+    let parser = pulldown_cmark::Parser::new(source_str);
+
+    use pulldown_cmark::{Event, Tag, CodeBlockKind};
+
+    // let mut in_code = false;
+
+    let parser = parser.map(
+        |event| { match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(data_lang))) => {
+                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(data_lang)))
+            }
+            Event::Code(s) => {
+                Event::Code(s)
+            }
+            event => event
+        } }
+    );
+
+
+    pulldown_cmark::html::write_html(output, parser).unwrap();
+
+    let write_elapsed2 = time_write_start2.elapsed();
+    println!("write time: {:?}", write_elapsed2);
 
     Ok(())
 }
