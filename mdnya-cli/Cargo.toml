@@ -17,9 +17,5 @@ html-escape = "0.2.11"
 
 mdnya = { path = "../mdnya" }
 
-mdnya-hl-rust   = { path = "../mdnya-hl-langs/rust", features = ["static"] }
-mdnya-hl-bash   = { path = "../mdnya-hl-langs/bash", features = ["static"] }
-mdnya-hl-csharp = { path = "../mdnya-hl-langs/csharp", features = ["static"] }
-
 [build-dependencies]
 cc = "*"

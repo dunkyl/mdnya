@@ -17,7 +17,7 @@ This is the end of header-testing, so there is a line separator here.
 
 ---
 
-Double star looks like **this**.
+Double star looks like **this** and has a space after it.
 
 Triple star looks like ***this***.
 
@@ -88,3 +88,7 @@ TODO: wiki-links
 ```sh
 ffmpeg -i "my input video.mp4" -vf scale=1920:1080 -sws_flags neighbor "my output video.mp4"
 ```
+
+::: info
+this area is fenced with `::: info`
+:::

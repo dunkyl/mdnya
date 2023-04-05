@@ -4,3 +4,4 @@
 *.dll
 *.obj
 /tree-sitter-builds
+node_modules

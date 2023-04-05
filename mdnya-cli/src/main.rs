@@ -86,10 +86,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut mdnya = MDNya::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, opts.no_ids);
     
-    mdnya.add_highlighter(mdnya_hl_rust::hl_static());
-    mdnya.add_highlighter(mdnya_hl_bash::hl_static());
-    mdnya.add_highlighter(mdnya_hl_csharp::hl_static());
-    
     mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();

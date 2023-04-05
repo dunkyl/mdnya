@@ -1,11 +1,9 @@
-use std::collections::HashMap;
+use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read};
 
 use phf::phf_map;
 use regex::Regex;
 use lazy_static::lazy_static;
 use tree_sitter::TreeCursor;
-
-use mdnya_hl::{TSHLang, CodeHighlighter};
 
 mod html;
 
@@ -25,20 +23,17 @@ fn to_title_case(s: impl AsRef<str>) -> String {
     }
 }
 pub struct MDNya {
-    highlighters: HashMap<String, TSHLang>,
-    highlighters_aliases: HashMap<String, String>,
     close_all_tags: bool,
     wrap_sections: Option<String>,
     heading_level: u8,
     no_ids: bool,
     no_code_lines: bool,
+    hl_node_proc: InOutProc
 }
 
 impl Drop for MDNya {
     fn drop(&mut self) {
-        for (_, lang) in self.highlighters.iter() {
-            Box::leak(Box::new(lang));
-        }
+        self.hl_node_proc.proc.kill().unwrap();
     }
 }
 
@@ -62,12 +57,12 @@ enum NodeTransform {
         inline: bool,
         attrs: &'static [(&'static str, Option<&'static str>)],
     },
-    Custom(fn(&MDNya, &mut TreeCursor, &[u8], &mut html::HTMLWriter, &mut MDNyaState) -> MdResult),
+    Custom(fn(&mut MDNya, &mut TreeCursor, &[u8], &mut html::HTMLWriter, &mut MDNyaState) -> MdResult),
     Skip
 }
 use NodeTransform::*;
 
-fn heading_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     if state.inside_section {
         if let Some(section_tag) = &m.wrap_sections {
             helper.end_tag(section_tag)?;
@@ -113,7 +108,7 @@ fn heading_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut h
     Ok(())
 }
 
-fn link_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn link_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     let link_destination = cur.node().child(1).map(|c| c.utf8_text(src).unwrap().into());
     helper.start_tag(&"a", &[("href", link_destination)])?;
     cur.goto_first_child();
@@ -125,7 +120,7 @@ fn link_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html
     Ok(())
 }
 
-fn image_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn image_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     cur.goto_first_child();
     let alt_text = cur.node().utf8_text(src).unwrap();
     cur.goto_next_sibling();
@@ -138,13 +133,13 @@ fn image_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut htm
     Ok(())
 }
 
-fn text_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
-    let text = cur.node().utf8_text(src).unwrap().trim_start();
+fn text_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+    let text = cur.node().utf8_text(src).unwrap();
     helper.write_text(text)?;
     Ok(())
 }
 
-fn list_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn list_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     let node = cur.node();
     let markers = (0..node.child_count()).map(|i| node.child(i).unwrap().child(0).unwrap().utf8_text(src).unwrap()).collect::<Vec<_>>();
     let is_bulleted = markers.iter().all(|&m| m == "-" || m == "*");
@@ -165,7 +160,7 @@ fn list_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html
     m.render_elem_seq(helper, false, &Full(&tag), cur, src, attrs, state)
 }
 
-fn list_item_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn list_item_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     cur.goto_first_child();
     cur.goto_next_sibling(); // skip list marker and p
     m.render_elem_seq(helper, true, &OptionalClose("li"), cur, src, &[], state)?;
@@ -173,7 +168,7 @@ fn list_item_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
     Ok(())
 }
 
-fn checkbox_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn checkbox_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     let node = cur.node();
     let is_checked = node.utf8_text(src).unwrap() == "[x]";
     let mut attrs = vec![
@@ -184,7 +179,13 @@ fn checkbox_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut 
     m.render_elem_seq(helper, false, &SelfClose("input"), cur, src, &attrs, state)
 }
 
-fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+
+static RENAME_LANGS: phf::Map<&'static str, &'static str> = phf_map! {
+    "md" => "markdown",
+    "sh" => "bash",
+};
+
+fn codeblock_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     cur.goto_first_child();
 
     if cur.node().kind() == "info_string" {
@@ -209,7 +210,7 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
             helper.start_tag(&"pre", &[("data-lang", Some(info.into()))])?;
             helper.start_tag(&"code", &[])?;
 
-            let highligher = m.try_get_highlighter(info);
+            // let highligher = m.try_get_highlighter(info);
             let add_code_lines = 
                 if m.no_code_lines {
                     |text: &str| text.trim_end().to_string()
@@ -221,12 +222,30 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
                     }
                 };
 
-            if let Some(hl) = highligher {
-                helper.write_html(add_code_lines(hl.highlight(content.as_bytes())?.as_str()))?;
-            } else {
-                println!("no highlight");
-                helper.write_html(add_code_lines(&html_escape::encode_text(content)))?;
-            };
+            let langname = RENAME_LANGS.get(info).unwrap_or(&info);
+
+            let nodein = &mut m.hl_node_proc.in_;
+            let nodeout = &mut m.hl_node_proc.out;
+            writeln!(nodein, "{}", langname)?;
+            for line in content.lines() {
+                writeln!(nodein, "\t{}", line)?;
+            }
+            writeln!(nodein, "")?;
+            let mut hl = String::new();
+            loop {
+                let mut buf = [0u8; 1024];
+                let mut n = nodeout.take(1024).read(&mut buf)?;
+                println!("read {} bytes", n);
+                if n == 0 { break; }
+                let mut end_text = false;
+                if n >= 2 && buf[n-2] == 0x04 { // EOT
+                    end_text = true;
+                    n -= 2;
+                } 
+                hl.push_str(std::str::from_utf8(&buf[..n]).unwrap());
+                if end_text { break; }
+            }
+            helper.write_html(add_code_lines(&hl))?;
             
             helper.end_tag(&"code")?;
             helper.end_tag(&"pre")?;
@@ -243,14 +262,14 @@ fn codeblock_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut
     Ok(())
 }
 
-fn table_cell_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn table_cell_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     let node = cur.node();
     let is_header = node.parent().unwrap().kind() == "table_header_row";
     let tag = if is_header { "th" } else { "td" };
     m.render_elem_seq(helper, true, &Full(&tag), cur, src, &[], state)
 }
 
-fn slb_transform(m: &MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+fn slb_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     helper.write_text("\n")?;
     Ok(())
 }
@@ -292,35 +311,44 @@ static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
     // list_marker, atx_hX_marker,link_dest, link_text, image_dest, image_text
 };
 
+struct InOutProc {
+    proc: Child,
+    in_: ChildStdin,
+    out: ChildStdout,
+}
+
+impl InOutProc {
+    fn new(mut proc: Child) -> Self {
+        let in_ = proc.stdin.take().unwrap();
+        let out = proc.stdout.take().unwrap();
+        Self { proc, in_, out }
+    }
+}
+
 impl MDNya {
     pub fn new(close_all_tags: bool, wrap_sections: Option<String>, heading_level: u8, no_ids: bool,) -> Self {
+        let node = std::process::Command::new("node")
+            .arg("index.js")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn().expect("node not found");
+        let mut proc = InOutProc::new(node);
+        {
+            let mut buf = [0u8; 6];
+            proc.out.read_exact(&mut buf).unwrap();
+        }
+        println!("node started");
         Self { 
-            highlighters: HashMap::new(),
-            highlighters_aliases: HashMap::new(),
             close_all_tags,
             wrap_sections,
             heading_level,
             no_ids,
-            no_code_lines: false
+            no_code_lines: false,
+            hl_node_proc: proc,
         }
     }
 
-    pub fn add_highlighter(&mut self, lang: TSHLang) {
-        let name = lang.name().to_string();
-        let aliases: Vec<String> = lang.aliases().iter().cloned().map(|s| s.to_string()).collect();
-        self.highlighters.insert(name.clone(), lang);
-        for alias in aliases {
-            self.highlighters_aliases.insert(alias, name.clone());
-        }
-    }
-
-    fn try_get_highlighter(&self, name: impl AsRef<str>) -> Option<&TSHLang> {
-        let name_str = name.as_ref().to_lowercase();
-        let name_str = self.highlighters_aliases.get(&name_str).unwrap_or(&name_str);
-        self.highlighters.get(name_str)
-    }
-
-    fn render_elem(&self, src: &[u8], cur: &mut TreeCursor, helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
+    fn render_elem(&mut self, src: &[u8], cur: &mut TreeCursor, helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
         let node = cur.node();
         let kind = node.kind();
         let behave = MD_TRANSFORMERS.get(kind).unwrap_or_else(|| {
@@ -332,14 +360,14 @@ impl MDNya {
                 let attrs: Vec<_> = attrs.iter().map(|(k, v)| (*k, v.as_ref().map(|s| s.to_string()))).collect();
                 self.render_elem_seq(helper, *inline, tag, cur, src, &attrs, state)?;
             },
-            Custom(f) => f(&self, cur, src, helper, state)?,
+            Custom(f) => f(self, cur, src, helper, state)?,
             Skip => ()
         }
 
         Ok(())
     }
 
-    fn render_elem_seq(&self, helper: &mut html::HTMLWriter, inline: bool, tag: &TagBehavior, cur: &mut TreeCursor, src: &[u8], attrs: &[(&str, Option<String>)], state: &mut MDNyaState) -> MdResult {
+    fn render_elem_seq(&mut self, helper: &mut html::HTMLWriter, inline: bool, tag: &TagBehavior, cur: &mut TreeCursor, src: &[u8], attrs: &[(&str, Option<String>)], state: &mut MDNyaState) -> MdResult {
         let switched_inline = !helper.is_inline && inline;
         if switched_inline {
             helper.enter_inline()?;
@@ -383,7 +411,7 @@ impl MDNya {
         })
     }
 
-    pub fn render(&self, md_source: &[u8], out: Box<dyn std::io::Write>) -> MdResult {
+    pub fn render(&mut self, md_source: &[u8], out: Box<dyn std::io::Write>) -> MdResult {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(unsafe { tree_sitter_markdown() }).unwrap();
         let tree = parser.parse(md_source, None).unwrap();
