@@ -16,7 +16,7 @@
     "hast-util-to-html": "^8.0.4"
   },
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^15.0.2"
+    "webpack": "^5.0.0"
   },
   "type": "module"
 }
