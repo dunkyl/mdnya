@@ -3,5 +3,6 @@
 *.html
 *.dll
 *.obj
+*.cjs
 /tree-sitter-builds
 node_modules

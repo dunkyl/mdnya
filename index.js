@@ -26,9 +26,8 @@ rl.on('line', (line) => {
         if (!s) {
             exit(1);
         }
-        let hl = toHtml(starryNight.highlight(code, s));
-        console.log(hl)
-        console.log("\x04")
+        console.log(toHtml(starryNight.highlight(code, s)))
+        console.log("\x04") // EOT
         lang = null;
         code = '';
     } else  {

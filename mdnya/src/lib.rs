@@ -1,4 +1,4 @@
-use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read};
+use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read, path::PathBuf};
 
 use phf::phf_map;
 use regex::Regex;
@@ -28,7 +28,8 @@ pub struct MDNya {
     heading_level: u8,
     no_ids: bool,
     no_code_lines: bool,
-    hl_node_proc: InOutProc
+    hl_node_proc: InOutProc,
+    hl_ready: bool,
 }
 
 impl Drop for MDNya {
@@ -224,6 +225,8 @@ fn codeblock_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: 
 
             let langname = RENAME_LANGS.get(info).unwrap_or(&info);
 
+            m.wait_for_starry();
+
             let nodein = &mut m.hl_node_proc.in_;
             let nodeout = &mut m.hl_node_proc.out;
             writeln!(nodein, "{}", langname)?;
@@ -325,19 +328,38 @@ impl InOutProc {
     }
 }
 
+const INDEXJS_SRC: &str = include_str!("../../dist/bundle.cjs");
+
+fn ensure_indexjs() -> PathBuf {
+    let indexjs = dirs::data_local_dir().unwrap().join(".mdnya").join("bundle.cjs");
+    if !indexjs.exists() {
+        std::fs::create_dir_all(indexjs.parent().unwrap()).unwrap();
+        std::fs::write(&indexjs, INDEXJS_SRC).unwrap();
+    }
+    indexjs
+}
+
 impl MDNya {
+
+    fn wait_for_starry(&mut self) {
+        if self.hl_ready { return; }
+        println!("waiting for starry night");
+        {
+            let mut buf = [0u8; 6];
+            self.hl_node_proc.out.read_exact(&mut buf).unwrap();
+        }
+        println!("starry night loaded :D");
+        self.hl_ready = true;
+    }
+
     pub fn new(close_all_tags: bool, wrap_sections: Option<String>, heading_level: u8, no_ids: bool,) -> Self {
+        let indexjs = ensure_indexjs();
         let node = std::process::Command::new("node")
-            .arg("index.js")
+            .arg(indexjs)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn().expect("node not found");
-        let mut proc = InOutProc::new(node);
-        {
-            let mut buf = [0u8; 6];
-            proc.out.read_exact(&mut buf).unwrap();
-        }
-        println!("node started");
+        let proc = InOutProc::new(node);
         Self { 
             close_all_tags,
             wrap_sections,
@@ -345,6 +367,7 @@ impl MDNya {
             no_ids,
             no_code_lines: false,
             hl_node_proc: proc,
+            hl_ready: false,
         }
     }
 
