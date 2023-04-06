@@ -378,6 +378,48 @@ fn ensure_indexjs() -> PathBuf {
     indexjs
 }
 
+use pulldown_cmark;
+
+struct PulldownNestIterator<'source, 'cb> {
+    stack: Vec<pulldown_cmark::Event<'source>>,
+    inner: pulldown_cmark::Parser<'source, 'cb>,
+}
+
+struct PulldownActions {
+    text: fn(&str, usize),
+    code: fn(&str, usize),
+    html: fn(&str, usize),
+    other: fn(&str, usize),
+    tag: fn(pulldown_cmark::Tag, usize),
+    end: fn(pulldown_cmark::Tag, usize),
+}
+
+fn pulldown_recurse(fun: &PulldownActions, iterator: &mut pulldown_cmark::Parser, level: usize) {
+    use pulldown_cmark::Event;
+    loop {
+        let next = iterator.next();
+        let Some(next) = next else { break; };
+        match next {
+            Event::Text(t) => (fun.text)(&t, level),
+            Event::Code(t) => (fun.code)(&t, level),
+            Event::Html(t) => (fun.html)(&t, level),
+            Event::FootnoteReference(t) => (fun.other)(&t, level),
+            Event::HardBreak => (fun.other)("hb", level),
+            Event::SoftBreak => (fun.other)("sb", level),
+            Event::Rule => (fun.other)("rule", level),
+            Event::TaskListMarker(t) => (fun.other)(&t.to_string(), level),
+            Event::Start(tag) => {
+                (fun.tag)(tag, level);
+                pulldown_recurse(fun, iterator, level+1);
+            }
+            Event::End(tag) => {
+                (fun.end)(tag, level);
+                break;
+            }
+        }
+    }
+}
+
 impl MDNya {
 
     fn wait_for_starry(&mut self) {
@@ -428,7 +470,7 @@ impl MDNya {
         Ok(())
     }
 
-    fn render_elem_seq(&mut self, helper: &mut html::HTMLWriter, inline: bool, tag: &TagBehavior, cur: &mut TreeCursor, src: &[u8], attrs: &[(&str, Option<String>)], state: &mut MDNyaState) -> MdResult {
+    fn render_elem_seq(&mut self, helper: &mut html::HTMLWriter, inline: bool, tag: &TagBehavior, cur: &mut TreeCursor, src: &[u8], attrs: &[(&str, Option<&str>)], state: &mut MDNyaState) -> MdResult {
         let switched_inline = !helper.is_inline && inline;
         if switched_inline {
             helper.enter_inline()?;
@@ -472,26 +514,49 @@ impl MDNya {
         })
     }
 
-    pub fn render(&mut self, md_source: &[u8], out: Box<dyn std::io::Write>) -> MdResult {
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(unsafe { tree_sitter_markdown() }).unwrap();
-        let tree = parser.parse(md_source, None).unwrap();
-        let mut cur = tree.root_node().walk();
-        let mut helper = html::HTMLWriter {
-            is_inline: false,
-            close_all_tags: self.close_all_tags,
-            indent: 4,
-            indent_level: 0,
-            writer: out,
+    pub fn render(&mut self, md_source: &str, out: Box<dyn std::io::Write>) -> MdResult {
+        use pulldown_cmark::Options;
+        let options = Options::from(
+            Options::ENABLE_TABLES |
+            Options::ENABLE_STRIKETHROUGH |
+            Options::ENABLE_TASKLISTS |
+            Options::ENABLE_FOOTNOTES
+        );
+        let mut parser = pulldown_cmark::Parser::new_ext(md_source, options);
+
+
+        let actions = PulldownActions {
+            text:  |t, level| println!("|{:indent$}text:  {t}", "", indent=level*2, t=t),
+            code:  |t, level| println!("|{:indent$}code:  {t}", "", indent=level*2, t=t),
+            html:  |t, level| println!("|{:indent$}html:  {t}", "", indent=level*2, t=t),
+            other: |t, level| println!("|{:indent$}other: {t}", "", indent=level*2, t=t),
+            tag:   |t, level| println!("|{:indent$}tag: {t:?}", "", indent=level*2, t=t),
+            end:   |t, level| println!("|{:indent$}end: {t:?}", "", indent=level*2, t=t),
         };
-        let mut state = MDNyaState { inside_section: false };
-        self.render_elem(md_source, &mut cur, &mut helper, &mut state)?;
-        if state.inside_section {
-            if let Some(section_tag) = &self.wrap_sections {
-                helper.end(section_tag)?;
-                state.inside_section = false;
-            }
-        }
+
+        pulldown_recurse(&actions, &mut parser, 0);
+
+
         Ok(())
+        // let mut parser = tree_sitter::Parser::new();
+        // parser.set_language(unsafe { tree_sitter_markdown() }).unwrap();
+        // let tree = parser.parse(md_source, None).unwrap();
+        // let mut cur = tree.root_node().walk();
+        // let mut helper = html::HTMLWriter {
+        //     is_inline: false,
+        //     close_all_tags: self.close_all_tags,
+        //     indent: 4,
+        //     indent_level: 0,
+        //     writer: out,
+        // };
+        // let mut state = MDNyaState { inside_section: false };
+        // self.render_elem(md_source, &mut cur, &mut helper, &mut state)?;
+        // if state.inside_section {
+        //     if let Some(section_tag) = &self.wrap_sections {
+        //         helper.end(section_tag)?;
+        //         state.inside_section = false;
+        //     }
+        // }
+        // Ok(())
     }
 }

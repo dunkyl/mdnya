@@ -86,7 +86,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut mdnya = MDNya::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, opts.no_ids);
     
-    mdnya.render(&source_code, output)?;
+    // let source_code = std::str::from_utf8(&source_code).unwrap();
+
+    // mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();
     if opts.verbose {
@@ -100,7 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let source_str = std::str::from_utf8(&source_code).unwrap();
 
     
-    mdnya.render2(source_str, output)?;
+    mdnya.render(source_str, output)?;
 
     // pulldown_cmark::html::write_html(output, parser).unwrap();
 
