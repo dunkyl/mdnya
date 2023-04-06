@@ -93,5 +93,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("write time: {:?}", write_elapsed);
     }
 
+    
+
+    let time_write_start2 = std::time::Instant::now();
+    
+    let source_str = std::str::from_utf8(&source_code).unwrap();
+
+    
+    mdnya.render2(source_str, output)?;
+
+    // pulldown_cmark::html::write_html(output, parser).unwrap();
+
+    let write_elapsed2 = time_write_start2.elapsed();
+    println!("write time: {:?}", write_elapsed2);
+
     Ok(())
 }

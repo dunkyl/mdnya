@@ -1,6 +1,7 @@
 use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read, path::PathBuf};
 
 use phf::phf_map;
+use pulldown_cmark::{CodeBlockKind, LinkType};
 use regex::Regex;
 use lazy_static::lazy_static;
 use tree_sitter::TreeCursor;
@@ -66,7 +67,7 @@ use NodeTransform::*;
 fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     if state.inside_section {
         if let Some(section_tag) = &m.wrap_sections {
-            helper.end_tag(section_tag)?;
+            helper.end(section_tag)?;
             state.inside_section = false;
         }
     }
@@ -75,9 +76,9 @@ fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &m
     let tag = format!("h{}", level+m.heading_level-1);
     cur.goto_next_sibling();
     let heading_content = cur.node().utf8_text(src).unwrap().trim_start();
-    let attrs =
+    let id =
         if m.no_ids {
-            vec![]
+            None
         } else {
             let id = 
                 if heading_content.starts_with('@')  {
@@ -85,7 +86,7 @@ fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &m
                 } else {
                     heading_content.to_lowercase().replace(" ", "-").replace("?", "")
                 };
-                vec![("id", Some(id))]
+            Some(id)
         };
     if cur.node().parent().unwrap().prev_sibling().is_some() {
         helper.write_html("\n")?;
@@ -94,15 +95,15 @@ fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &m
         helper.enter_inline_s()?;
     }
     
-    helper.start_tag(&tag, &attrs)?;
+    helper.start(&tag, &[("id", id.as_ref().map(|x| &**x))])?;
     m.render_elem(src, cur, helper, state)?;
-    helper.end_tag(&tag)?;
+    helper.end(&tag)?;
     helper.exit_inline()?;
     cur.goto_parent();
     
     if !state.inside_section {
         if let Some(section_tag) = &m.wrap_sections {
-            helper.start_tag(section_tag, &[])?;
+            helper.start(section_tag, &[])?;
             state.inside_section = true;
         }
     }
@@ -111,13 +112,15 @@ fn heading_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &m
 
 fn link_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut html::HTMLWriter, state: &mut MDNyaState) -> MdResult {
     let link_destination = cur.node().child(1).map(|c| c.utf8_text(src).unwrap().into());
-    helper.start_tag(&"a", &[("href", link_destination)])?;
+    helper.start(&"a", &[("href", link_destination)])?;
     cur.goto_first_child();
     cur.goto_first_child();
     m.render_elem(src, cur, helper, state)?;
     cur.goto_parent();
     cur.goto_parent();
-    helper.end_tag(&"a")?;
+    helper.end(&"a")?;
+
+    // cur.node().child_by_field_name(field_name)
     Ok(())
 }
 
@@ -147,7 +150,7 @@ fn list_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut 
     let is_numbered_forward = markers.iter().enumerate().all(|(i, &m)| m == &((i+1).to_string() + "."));
     let is_numbered_backward  = markers.iter().enumerate().all(|(i, &m)| m == &((markers.len() - i).to_string() + "."));
 
-    let (tag, attrs): (_, &[(_, Option<String>)]) =
+    let (tag, attrs): (_, &[(_, Option<&str>)]) =
         if is_bulleted {
             ("ul", &[])
         } else if is_numbered_forward {
@@ -201,15 +204,16 @@ fn codeblock_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: 
                     to_title_case(class)
                 }
             };
-            helper.start_tag(&"div", &[("class", Some(format!("admonition {class}")))])?;
+            let class = format!("admonition {class}");
+            helper.start(&"div", &[("class", Some(&class))])?;
             helper.push_elem(&["h3"], title)?;
             helper.push_elem(&["p"], content)?;
-            helper.end_tag(&"div")?;
+            helper.end(&"div")?;
 
         } else { // possibly-highlighted code block
             helper.enter_inline()?;
-            helper.start_tag(&"pre", &[("data-lang", Some(info.into()))])?;
-            helper.start_tag(&"code", &[])?;
+            helper.start(&"pre", &[("data-lang", Some(info.into()))])?;
+            helper.start(&"code", &[])?;
 
             // let highligher = m.try_get_highlighter(info);
             let add_code_lines = 
@@ -250,8 +254,8 @@ fn codeblock_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: 
             }
             helper.write_html(add_code_lines(&hl))?;
             
-            helper.end_tag(&"code")?;
-            helper.end_tag(&"pre")?;
+            helper.end(&"code")?;
+            helper.end(&"pre")?;
             helper.exit_inline()?;
         }
     } else { // no info, plain code block
@@ -276,6 +280,41 @@ fn slb_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut h
     helper.write_text("\n")?;
     Ok(())
 }
+
+const H_TAGS: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
+
+pub fn write_md_event(md: pulldown_cmark::Event, w: &mut html::HTMLWriter) -> MdResult {
+    use pulldown_cmark::Tag;
+    use pulldown_cmark::Event::*;
+    let x = 
+        match md {
+
+            Start(Tag::Paragraph) => w.start(&"p", &[])?,
+            End(Tag::Paragraph) => w.end(&"p")?,
+
+            Start(Tag::Heading(level, _, _)) => w.start(&H_TAGS[level as usize], &[])?,
+            End(Tag::Heading(level, _, _)) => w.end(&H_TAGS[level as usize])?,
+
+            Start(Tag::BlockQuote) => w.start(&"blockquote", &[])?,
+            End(Tag::BlockQuote) => w.end(&"blockquote")?,
+
+            Start(Tag::CodeBlock(_)) => w.start(&"pre", &[])?,
+            
+            Start(Tag::List(_)) => w.start(&"ul", &[])?,
+            Start(tag) => todo!("{:?}", tag),
+            End(_) => todo!(),
+            Text(_) => todo!(),
+            Code(_) => todo!(),
+            Html(_) => todo!(),
+            FootnoteReference(_) => todo!(),
+            SoftBreak => todo!(),
+            HardBreak => todo!(),
+            Rule => todo!(),
+            TaskListMarker(_) => todo!(),
+        };
+    Ok(())
+}
+
 
 static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
     "document" => Simple { tag: NoTags, inline: false, attrs: &[] },
@@ -380,7 +419,6 @@ impl MDNya {
         });
         match behave {
             Simple {tag, inline, attrs} => {
-                let attrs: Vec<_> = attrs.iter().map(|(k, v)| (*k, v.as_ref().map(|s| s.to_string()))).collect();
                 self.render_elem_seq(helper, *inline, tag, cur, src, &attrs, state)?;
             },
             Custom(f) => f(self, cur, src, helper, state)?,
@@ -396,7 +434,7 @@ impl MDNya {
             helper.enter_inline()?;
         }
         match tag {
-            Full(t) | OptionalClose(t) => helper.start_tag(&t, attrs)?,
+            Full(t) | OptionalClose(t) => helper.start(&t, attrs)?,
             SelfClose(t) => helper.self_close_tag(&t, attrs)?,
             NoTags => ()
         }
@@ -421,7 +459,7 @@ impl MDNya {
             cur.goto_parent();
         }
         match tag {
-            Full(t) | OptionalClose(t) => helper.end_tag(&t)?,
+            Full(t) | OptionalClose(t) => helper.end(&t)?,
             SelfClose(_) | NoTags => (),
         }
         Ok(if switched_inline {
@@ -450,7 +488,7 @@ impl MDNya {
         self.render_elem(md_source, &mut cur, &mut helper, &mut state)?;
         if state.inside_section {
             if let Some(section_tag) = &self.wrap_sections {
-                helper.end_tag(section_tag)?;
+                helper.end(section_tag)?;
                 state.inside_section = false;
             }
         }

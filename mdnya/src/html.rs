@@ -16,7 +16,7 @@ impl HTMLWriter {
         Ok(())
     }
 
-    fn write_tag(&mut self, before: &str, tag: &str, attrs: &[(&str, Option<String>)], after: &str) -> std::io::Result<()> {
+    fn write_tag(&mut self, before: &str, tag: &str, attrs: &[(&str, Option<&str>)], after: &str) -> std::io::Result<()> {
         if !self.is_inline {
             writeln!(self.writer, "")?;
             self.write_indent()?;
@@ -34,7 +34,7 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn start_tag(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<String>)]) -> std::io::Result<()> {
+    pub fn start(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
         // if !self.is_inline && self.indent_level == 0 {
         //     writeln!(self.writer, "")?;
         // }
@@ -45,11 +45,11 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn self_close_tag(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<String>)]) -> std::io::Result<()> {
+    pub fn self_close_tag(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
         self.write_tag("<", tag.as_ref(), attrs, " />")
     }
 
-    pub fn end_tag(&mut self, tag: & impl AsRef<str>) -> std::io::Result<()> {
+    pub fn end(&mut self, tag: & impl AsRef<str>) -> std::io::Result<()> {
         if !self.is_inline {
             self.indent_level -= 1;
         }
@@ -88,11 +88,11 @@ impl HTMLWriter {
     pub fn push_elem(&mut self, tags: &[&str], text: impl AsRef<str>) -> std::io::Result<()> {
         self.enter_inline()?;
         for tag in tags {
-            self.start_tag(tag, &[])?;
+            self.start(tag, &[])?;
         }
         self.write_text(text)?;
         for tag in tags {
-            self.end_tag(tag)?;
+            self.end(tag)?;
         }
         self.exit_inline()
     }
