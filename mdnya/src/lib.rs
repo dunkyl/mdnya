@@ -32,6 +32,7 @@ pub struct MDNya {
     no_code_lines: bool,
     hl_node_proc: InOutProc,
     hl_ready: bool,
+    razor: bool
 }
 
 impl Drop for MDNya {
@@ -378,6 +379,7 @@ impl MDNya {
             no_code_lines: false,
             hl_node_proc: proc,
             hl_ready: false,
+            razor: false
         }
     }
 
@@ -443,7 +445,7 @@ impl MDNya {
         })
     }
 
-    fn render_root(&mut self, node: markdown::mdast::Node) -> (serde_yaml::Value, String, Vec<String>) {
+    fn render_root(&mut self, node: markdown::mdast::Node, htmler: &mut html::HTMLWriter) -> (serde_yaml::Value, Vec<String>) {
         use markdown::mdast::*;
         let Node::Root(Root { children, ..}) = node else {
             panic!("non-root node passed to render_root")
@@ -453,8 +455,11 @@ impl MDNya {
         let (frontmatter, skip1) =
             if let Some(Node::Yaml(Yaml{value, ..})) = &first_child {
                 use serde_yaml::from_str;
-                (from_str(value).unwrap(), true)
+                let fm = (from_str(value).unwrap(), true);
+                justlogfox::log_debug!("frontmatter: {:?}", (fm.0));
+                fm
             } else {
+                justlogfox::log_debug!("document has no frontmatter");
                 (serde_yaml::Value::Null, false)
             };
         let rest_children = if skip1 {
@@ -463,140 +468,270 @@ impl MDNya {
             first_child.into_iter().chain(children_iter)
         };
         let mut tags = vec![];
-        let html = self.render_children(rest_children, &mut tags).into();
-        (frontmatter, html, tags)
+        self.render_children(rest_children, &mut tags, htmler).unwrap();
+        (frontmatter, tags)
     }
 
-    fn render_children(&mut self, children: impl IntoIterator<Item=markdown::mdast::Node>, tags: &mut  Vec<String>) -> Markup {
-        maud::html! {
-            @for node in children {
-                (self.render_node(node, 0, tags))
-            }
-        }
-    }
-
-    fn render_node(&mut self, node: markdown::mdast::Node, depth: usize, tags: &mut  Vec<String>) -> maud::Markup {
-        use maud::html;
+    fn render_table(&mut self, table: markdown::mdast::Table, caption: Option<Vec<markdown::mdast::Node>>, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
         use markdown::mdast::*;
-        html! {
-        @match node {
+        let Table { children, align, .. } = table;
+        let align_attrs = align.iter().map(|align| match align {
+            AlignKind::None => vec![],
+            AlignKind::Left => vec![("style", Some("text-align: left"))],
+            AlignKind::Right => vec![("style", Some("text-align: right"))],
+            AlignKind::Center => vec![("style", Some("text-align: center"))],
+        }).collect::<Vec<_>>();
+
+        let mut col_num = 0;
+        let n_cols = align.len();
+        htmler.start("table", &[])?;
+
+        if let Some(caption) = caption {
+            htmler.enter_inline()?;
+            htmler.start("caption", &[])?;
+            self.render_children(caption, tags, htmler)?;
+            htmler.end("caption")?;
+            htmler.exit_inline()?;
+        }
+
+        htmler.start("thead", &[])?;
+
+        let mut rows = children.into_iter();
+
+        let Node::TableRow(TableRow { children: header_cells, .. }) = rows.next().expect("table with no header row")
+            else { panic!("non-row in table") };
+        for cell in header_cells {
+            let Node::TableCell(TableCell { children, .. }) = cell
+                else { panic!("non-cell in table row") };
+            let cell_attrs = &align_attrs[col_num];
+            htmler.enter_inline()?;
+            htmler.start("th", cell_attrs)?;
+            self.render_children(children, tags, htmler)?;
+            htmler.end("th")?;
+            htmler.exit_inline()?;
+            col_num = (col_num + 1) % n_cols;
+        }
+        htmler.end("thead")?;
+        htmler.start("tbody", &[])?;
+        for row in rows {
+            let Node::TableRow(TableRow { children: cells, .. }) = row
+                else { panic!("non-row in table") };
+            htmler.start("tr", &[])?;
+            for cell in cells {
+                let Node::TableCell(TableCell { children, .. }) = cell
+                    else { panic!("non-cell in table row") };
+                let cell_attrs = &align_attrs[col_num];
+                htmler.enter_inline()?;
+                htmler.start("td", cell_attrs)?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("td")?;
+                htmler.exit_inline()?;
+                col_num = (col_num + 1) % n_cols;
+            }
+            htmler.end("tr")?;
+        }
+        htmler.end("tbody")?;
+        htmler.end("table")?;
+        Ok(())
+    } 
+
+    fn render_children(&mut self, children: impl IntoIterator<Item=markdown::mdast::Node>, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
+        use markdown::mdast::*;
+
+        // this is for table captions:
+        let mut children = children.into_iter().peekable();
+        while let Some(node) = children.next() {
+            if matches!(node, Node::Table(_)) { // a table
+               if let Some(Node::Paragraph(par)) = children.peek() { // followed by a paragraph
+                    if let Some(Node::Text(Text { value, .. })) = par.children.first() {
+                        if value.starts_with(": ") { // that starts with ": "
+                            let Some(Node::Paragraph(Paragraph { children: mut caption_nodes, .. })) = children.next() else { unreachable!() }; // consume the paragraph
+                            let Node::Text(mut text) = caption_nodes.remove(0) else { unreachable!() };
+                            text.value = text.value[2..].to_string(); // remove ": "
+                            caption_nodes.insert(0, Node::Text(text));
+                            let caption = Some(caption_nodes); // is a caption.
+                            let Node::Table(table) = node else { unreachable!() };
+                            self.render_table(table, caption, tags, htmler)?;
+                            continue;
+                        }
+                    }
+               }
+            }
+
+            // default case:
+            self.render_node(node, 0, tags, htmler)?;
+        }
+        Ok(())
+    }
+
+    fn render_node(&mut self, node: markdown::mdast::Node, depth: usize, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
+        use markdown::mdast::*;
+        match node {
             Node::Heading(Heading { children, depth, .. }) => {
-                (PreEscaped(format!(
-                    "<h{level}>{content}</h{level}>",
-                    level = depth+self.heading_level,
-                    content = self.render_children(children, tags).into_string())))
+                let tag = format!("h{}", (depth + self.heading_level) as isize - 1);
+                let fragment = children.iter().fold(String::new(), |acc, node| acc + node.to_string().as_str()).to_ascii_lowercase().replace(" ", "-");
+                justlogfox::log_debug!("heading: {} {}", tag, fragment);
+                htmler.enter_inline()?;
+                htmler.start(&tag, &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end(tag)?;
+                htmler.exit_inline()?;
             }
             Node::Text(Text { value, .. }) => {
-                (value)
+
+                lazy_static! {
+                    static ref TAG_RE: Regex = Regex::new(r"#[a-zA-Z0-9_-]+").unwrap();
+                }
+
+                let new_tags = TAG_RE.find_iter(&value).map(|m| m.as_str()[1..].to_string()).collect::<Vec<_>>();
+                for tag in &new_tags {
+                    justlogfox::log_debug!("tag: #{}", tag);
+                }
+                tags.extend(new_tags);
+
+                htmler.write_text(value)?;
             }
             Node::Emphasis(Emphasis { children, .. }) => {
-                em {
-                    (self.render_children(children, tags))
-                }
+                htmler.start("em", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("em")?;
             }
             Node::Strong(Strong { children, .. }) => {
-                strong {
-                    (self.render_children(children, tags))
-                }
+                htmler.start("strong", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("strong")?;
             }
             Node::Delete(Delete { children, .. }) => {
-                del {
-                    (self.render_children(children, tags))
-                }
+                htmler.start("del", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("del")?;
             }
             Node::BlockQuote(BlockQuote { children, .. }) => {
-                blockquote {
-                    (self.render_children(children, tags))
-                }
+                htmler.start("blockquote", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("blockquote")?;
             }
             Node::Paragraph(Paragraph { children, .. }) => {
-                p {
-                    (self.render_children(children, tags))
+
+                if children.len() != 1
+                   || !matches!(children[0], Node::Image(_)) {
+                    
+                    htmler.enter_inline()?;
+                    htmler.start("p", &[])?;
+                    self.render_children(children, tags, htmler)?;
+                    htmler.end("p")?;
+                    // htmler.end_implicit();
+                    htmler.exit_inline()?;
+                    
+                } else {
+                    let mut nodes = children.into_iter();
+                    let Node::Image(Image { url, title, alt, .. }) = nodes.next().unwrap()
+                        else { unreachable!(); };
+
+                    if title != None { todo!("title was {:?}", title); }
+                    htmler.self_close_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))])?;
                 }
             },
             Node::Link(Link { children, url, title, .. }) => {
-                @if title != None { @let _ = todo!("title was {:?}", title); }
-                a href=(url) {
-                    (self.render_children(children, tags))
-                }
+                if title != None { todo!("title was {:?}", title); }
+                htmler.start("a", &[("href", Some(&url))])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("a")?;
             }
             Node::Image(Image { url, title, alt, .. }) => {
-                @if title != None { @let _ = todo!("title was {:?}", title); }
-                img src=(url) alt=(alt);
+                if title != None { todo!("title was {:?}", title); }
+                htmler.self_close_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))])?;
             }
             Node::Code(Code { value, lang, meta, .. }) => {
-                @if meta != None { @let _ = todo!("meta was {:?}", meta); }
-                pre {
-                    code data-lang=[lang] {
-                        (value)
+                if meta != None { todo!("meta was {:?}", meta); }
+
+                let add_code_lines = 
+                    if self.no_code_lines {
+                        |text: &str| text.trim_end().to_string()
+                    } else {
+                        |text: &str| {
+                            text.trim_end().split('\n').map(|line| {
+                                format!("<span class=\"code-line\">{line}</span>")
+                            }).collect::<Vec<_>>().join("\n")
+                        }
+                    };
+
+                let code = html_escape::encode_text(&value);
+                let code = add_code_lines(&code);
+
+
+                htmler.enter_inline()?;
+                htmler.start("pre", &[])?;
+                if let Some(lang) = lang {
+                    if self.razor && lang.as_str() == "@" {
+                        return Ok(());
                     }
+                    htmler.start("code", &[("data-lang", Some(lang.as_str()))])?;
+                } else {
+                    htmler.start("code", &[])?;
                 }
+                htmler.write_html(code)?;
+                htmler.end("code")?;
+                htmler.end("pre")?;
+                htmler.exit_inline()?;
             }
             Node::ThematicBreak(ThematicBreak {..}) => {
-                hr;
+                htmler.self_close_tag("hr", &[])?;
             }
             Node::List(List { children, ordered: true, .. }) => {
-                ol {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
-                }
+                htmler.start("ol", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("ol")?;
             }
             Node::List(List { children, ordered: false, .. }) => {
-                ul {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
-                }
+                htmler.start("ul", &[])?;
+                self.render_children(children, tags, htmler)?;
+                htmler.end("ul")?;
             }
             Node::ListItem(ListItem { children, .. }) => {
-                li {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
+
+                htmler.enter_inline()?;
+                htmler.start("li", &[])?;
+
+                if children.len() != 1
+                   || !matches!(children[0], Node::Paragraph(_)) {
+                    
+                    self.render_children(children, tags, htmler)?;
+                    
+                } else {
+                    let mut nodes = children.into_iter();
+                    let Node::Paragraph(Paragraph {children, .. }) = nodes.next().unwrap()
+                        else { unreachable!(); };
+
+                    self.render_children(children, tags, htmler)?;
                 }
+                htmler.end("li")?;
+                // htmler.end_implicit();
+                htmler.exit_inline()?;
             }
             Node::InlineCode(InlineCode { value, .. }) => {
-                code {
-                    (value)
-                }
+                htmler.start("code", &[])?;
+                htmler.write_text(value)?;
+                htmler.end("code")?;
             }
-            Node::Table(Table { children, align, .. }) => {
-                @let _x = {
-                    justlogfox::log_warn!("table align: {:?}", align);
-                    println!("table align: {:?}", align);
-                };
-                table {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
-                }
+            Node::Table(table) => { // table has no caption
+                self.render_table(table, None, tags, htmler)?;
             }
-            Node::TableRow(TableRow { children, .. }) => {
-                tr {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
-                }
-            }
-            Node::TableCell(TableCell { children, .. }) => {
-                td {
-                    @for child in children {
-                        (self.render_node(child, depth+1, tags))
-                    }
-                }
+            Node::TableRow(_) |
+            Node::TableCell(_) => {
+                panic!("table row or cell passed to render_node");
             }
 
             Node::Yaml(_) | Node::Root(_) => {
-                @let _ = panic!("root or yaml node passed to render_node");
+                panic!("root or yaml node passed to render_node");
             }
             _ => {
-                @let s = format!("{:?}", node);
-                @let y = s.split_ascii_whitespace().next().unwrap();
-                @let _ = todo!("render_node: {}", y);
+                let s = format!("{:?}", node);
+                let y = s.split_ascii_whitespace().next().unwrap();
+                todo!("render_node: {}", y);
             }
-        }
-        }
+        };
+        Ok(())
     }
 
     pub fn render(&mut self, md_source: &str, mut out: Box<dyn std::io::Write>) -> MdResult {
@@ -606,13 +741,18 @@ impl MDNya {
         options.parse.constructs.frontmatter = true;
         let ast = markdown::to_mdast(md_source, &options.parse).unwrap();
 
-        let (frontmatter, html, tags) = self.render_root(ast);
+        let mut html_writer = html::HTMLWriter {
+            is_inline: false,
+            close_all_tags: self.close_all_tags,
+            indent: 4,
+            indent_level: 0,
+            writer: out,
+        };
 
-        write!(out, "{}", html)?;
+        let (frontmatter, tags) = self.render_root(ast, &mut html_writer);
 
-        Ok(())
         // let mut parser = tree_sitter::Parser::new();
-        // parser.set_language(unsafe { tree_sitter_markdown() }).unwrap();
+        // parser.set_language(tree_sitter_markdown::language()).unwrap();
         // let tree = parser.parse(md_source, None).unwrap();
         // let mut cur = tree.root_node().walk();
         // let mut helper = html::HTMLWriter {
@@ -623,13 +763,13 @@ impl MDNya {
         //     writer: out,
         // };
         // let mut state = MDNyaState { inside_section: false };
-        // self.render_elem(md_source, &mut cur, &mut helper, &mut state)?;
+        // self.render_elem(md_source.as_bytes(), &mut cur, &mut helper, &mut state)?;
         // if state.inside_section {
         //     if let Some(section_tag) = &self.wrap_sections {
         //         helper.end(section_tag)?;
         //         state.inside_section = false;
         //     }
         // }
-        // Ok(())
+        Ok(())
     }
 }

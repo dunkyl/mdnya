@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     justlogfox::set_crate_color!(justlogfox::CssColors::Pink);
 
-    justlogfox::log_trace!("Start! (ToT)/~~~");
+    justlogfox::log_trace!("Close all tags: {}", (opts.close_all_tags));
 
     let source_code = std::fs::read(&opts.input_file).unwrap();
 

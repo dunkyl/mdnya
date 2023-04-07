@@ -3,7 +3,11 @@ has_front_matter: true
 seond_prop: "hello"
 ---
 
-```{xx}
+There is a front matter here. It has a `has_front_matter` property and a `second_prop` property, but that won't be rendered.
+
+That is #cool. This line ends in a hastag #
+
+```@
     ViewBag.Title = "Test";
     Model.Y = Model.X == "`what`";
 ```
@@ -62,6 +66,10 @@ List with items far apart:
 The code below will panic!
 ```
 
+> [!warning]
+>
+> The code below will panic!
+
 ```
 fn main() {
     panic!("Hello World")
@@ -78,8 +86,11 @@ A way to make it not panic would be to use `println!()` instead of `panic!()`.
 
 
 | Tables |  Are  | Cool  |
+|--------|-------|-------|
 | col 1  | col 2 | col 3 |
 | col 4  | col 5 | col 6 |
+
+: *especially* with a captions!
 
 Here is an indented block:
 

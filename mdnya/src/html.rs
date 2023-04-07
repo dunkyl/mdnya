@@ -34,7 +34,7 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn start(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
+    pub fn start(&mut self, tag: impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
         // if !self.is_inline && self.indent_level == 0 {
         //     writeln!(self.writer, "")?;
         // }
@@ -45,19 +45,27 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn self_close_tag(&mut self, tag: & impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
-        self.write_tag("<", tag.as_ref(), attrs, " />")
+    pub fn self_close_tag(&mut self, tag: impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
+        self.write_tag("<", tag.as_ref(), attrs, " />\n")
     }
 
-    pub fn end(&mut self, tag: & impl AsRef<str>) -> std::io::Result<()> {
-        if !self.is_inline {
+    pub fn end(&mut self, tag: impl AsRef<str>) -> std::io::Result<()> {
+        if !self.is_inline && self.indent_level > 0 {
             self.indent_level -= 1;
         }
         let tag = tag.as_ref();
-        if !self.close_all_tags && ["p", "li"].contains(&tag) {
-            Ok(())
-        } else {
-            self.write_tag("</", tag, &[], ">")
+        if self.close_all_tags || !["p", "li"].contains(&tag) {
+            self.write_tag("</", tag, &[], ">")?;
+        }
+        if !self.is_inline && self.indent_level == 0 {
+            writeln!(self.writer, "")?;
+        }
+        Ok(())
+    }
+
+    pub fn end_implicit(&mut self) {
+        if !self.is_inline && self.indent_level > 0 {
+            self.indent_level -= 1;
         }
     }
 
@@ -74,6 +82,9 @@ impl HTMLWriter {
 
     pub fn exit_inline(&mut self) -> std::io::Result<()> {
         self.is_inline = false;
+        if self.indent_level == 0 {
+            writeln!(self.writer, "")?;
+        }
         Ok(())
     }
 
