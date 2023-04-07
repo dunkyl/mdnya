@@ -1,7 +1,8 @@
 use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read, path::PathBuf};
 
+use markdown::Constructs;
+use maud::{Markup, PreEscaped};
 use phf::phf_map;
-use pulldown_cmark::{CodeBlockKind, LinkType};
 use regex::Regex;
 use lazy_static::lazy_static;
 use tree_sitter::TreeCursor;
@@ -281,39 +282,6 @@ fn slb_transform(m: &mut MDNya, cur: &mut TreeCursor, src: &[u8], helper: &mut h
     Ok(())
 }
 
-const H_TAGS: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
-
-pub fn write_md_event(md: pulldown_cmark::Event, w: &mut html::HTMLWriter) -> MdResult {
-    use pulldown_cmark::Tag;
-    use pulldown_cmark::Event::*;
-    let x = 
-        match md {
-
-            Start(Tag::Paragraph) => w.start(&"p", &[])?,
-            End(Tag::Paragraph) => w.end(&"p")?,
-
-            Start(Tag::Heading(level, _, _)) => w.start(&H_TAGS[level as usize], &[])?,
-            End(Tag::Heading(level, _, _)) => w.end(&H_TAGS[level as usize])?,
-
-            Start(Tag::BlockQuote) => w.start(&"blockquote", &[])?,
-            End(Tag::BlockQuote) => w.end(&"blockquote")?,
-
-            Start(Tag::CodeBlock(_)) => w.start(&"pre", &[])?,
-            
-            Start(Tag::List(_)) => w.start(&"ul", &[])?,
-            Start(tag) => todo!("{:?}", tag),
-            End(_) => todo!(),
-            Text(_) => todo!(),
-            Code(_) => todo!(),
-            Html(_) => todo!(),
-            FootnoteReference(_) => todo!(),
-            SoftBreak => todo!(),
-            HardBreak => todo!(),
-            Rule => todo!(),
-            TaskListMarker(_) => todo!(),
-        };
-    Ok(())
-}
 
 
 static MD_TRANSFORMERS: phf::Map<&'static str, NodeTransform> = phf_map! {
@@ -378,47 +346,8 @@ fn ensure_indexjs() -> PathBuf {
     indexjs
 }
 
-use pulldown_cmark;
 
-struct PulldownNestIterator<'source, 'cb> {
-    stack: Vec<pulldown_cmark::Event<'source>>,
-    inner: pulldown_cmark::Parser<'source, 'cb>,
-}
 
-struct PulldownActions {
-    text: fn(&str, usize),
-    code: fn(&str, usize),
-    html: fn(&str, usize),
-    other: fn(&str, usize),
-    tag: fn(pulldown_cmark::Tag, usize),
-    end: fn(pulldown_cmark::Tag, usize),
-}
-
-fn pulldown_recurse(fun: &PulldownActions, iterator: &mut pulldown_cmark::Parser, level: usize) {
-    use pulldown_cmark::Event;
-    loop {
-        let next = iterator.next();
-        let Some(next) = next else { break; };
-        match next {
-            Event::Text(t) => (fun.text)(&t, level),
-            Event::Code(t) => (fun.code)(&t, level),
-            Event::Html(t) => (fun.html)(&t, level),
-            Event::FootnoteReference(t) => (fun.other)(&t, level),
-            Event::HardBreak => (fun.other)("hb", level),
-            Event::SoftBreak => (fun.other)("sb", level),
-            Event::Rule => (fun.other)("rule", level),
-            Event::TaskListMarker(t) => (fun.other)(&t.to_string(), level),
-            Event::Start(tag) => {
-                (fun.tag)(tag, level);
-                pulldown_recurse(fun, iterator, level+1);
-            }
-            Event::End(tag) => {
-                (fun.end)(tag, level);
-                break;
-            }
-        }
-    }
-}
 
 impl MDNya {
 
@@ -514,28 +443,172 @@ impl MDNya {
         })
     }
 
-    pub fn render(&mut self, md_source: &str, out: Box<dyn std::io::Write>) -> MdResult {
-        use pulldown_cmark::Options;
-        let options = Options::from(
-            Options::ENABLE_TABLES |
-            Options::ENABLE_STRIKETHROUGH |
-            Options::ENABLE_TASKLISTS |
-            Options::ENABLE_FOOTNOTES
-        );
-        let mut parser = pulldown_cmark::Parser::new_ext(md_source, options);
-
-
-        let actions = PulldownActions {
-            text:  |t, level| println!("|{:indent$}text:  {t}", "", indent=level*2, t=t),
-            code:  |t, level| println!("|{:indent$}code:  {t}", "", indent=level*2, t=t),
-            html:  |t, level| println!("|{:indent$}html:  {t}", "", indent=level*2, t=t),
-            other: |t, level| println!("|{:indent$}other: {t}", "", indent=level*2, t=t),
-            tag:   |t, level| println!("|{:indent$}tag: {t:?}", "", indent=level*2, t=t),
-            end:   |t, level| println!("|{:indent$}end: {t:?}", "", indent=level*2, t=t),
+    fn render_root(&mut self, node: markdown::mdast::Node) -> (serde_yaml::Value, String, Vec<String>) {
+        use markdown::mdast::*;
+        let Node::Root(Root { children, ..}) = node else {
+            panic!("non-root node passed to render_root")
         };
+        let mut children_iter = children.into_iter();
+        let first_child = children_iter.next();
+        let (frontmatter, skip1) =
+            if let Some(Node::Yaml(Yaml{value, ..})) = &first_child {
+                use serde_yaml::from_str;
+                (from_str(value).unwrap(), true)
+            } else {
+                (serde_yaml::Value::Null, false)
+            };
+        let rest_children = if skip1 {
+            (None).into_iter().chain(children_iter)
+        } else {
+            first_child.into_iter().chain(children_iter)
+        };
+        let mut tags = vec![];
+        let html = self.render_children(rest_children, &mut tags).into();
+        (frontmatter, html, tags)
+    }
 
-        pulldown_recurse(&actions, &mut parser, 0);
+    fn render_children(&mut self, children: impl IntoIterator<Item=markdown::mdast::Node>, tags: &mut  Vec<String>) -> Markup {
+        maud::html! {
+            @for node in children {
+                (self.render_node(node, 0, tags))
+            }
+        }
+    }
 
+    fn render_node(&mut self, node: markdown::mdast::Node, depth: usize, tags: &mut  Vec<String>) -> maud::Markup {
+        use maud::html;
+        use markdown::mdast::*;
+        html! {
+        @match node {
+            Node::Heading(Heading { children, depth, .. }) => {
+                (PreEscaped(format!(
+                    "<h{level}>{content}</h{level}>",
+                    level = depth+self.heading_level,
+                    content = self.render_children(children, tags).into_string())))
+            }
+            Node::Text(Text { value, .. }) => {
+                (value)
+            }
+            Node::Emphasis(Emphasis { children, .. }) => {
+                em {
+                    (self.render_children(children, tags))
+                }
+            }
+            Node::Strong(Strong { children, .. }) => {
+                strong {
+                    (self.render_children(children, tags))
+                }
+            }
+            Node::Delete(Delete { children, .. }) => {
+                del {
+                    (self.render_children(children, tags))
+                }
+            }
+            Node::BlockQuote(BlockQuote { children, .. }) => {
+                blockquote {
+                    (self.render_children(children, tags))
+                }
+            }
+            Node::Paragraph(Paragraph { children, .. }) => {
+                p {
+                    (self.render_children(children, tags))
+                }
+            },
+            Node::Link(Link { children, url, title, .. }) => {
+                @if title != None { @let _ = todo!("title was {:?}", title); }
+                a href=(url) {
+                    (self.render_children(children, tags))
+                }
+            }
+            Node::Image(Image { url, title, alt, .. }) => {
+                @if title != None { @let _ = todo!("title was {:?}", title); }
+                img src=(url) alt=(alt);
+            }
+            Node::Code(Code { value, lang, meta, .. }) => {
+                @if meta != None { @let _ = todo!("meta was {:?}", meta); }
+                pre {
+                    code data-lang=[lang] {
+                        (value)
+                    }
+                }
+            }
+            Node::ThematicBreak(ThematicBreak {..}) => {
+                hr;
+            }
+            Node::List(List { children, ordered: true, .. }) => {
+                ol {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+            Node::List(List { children, ordered: false, .. }) => {
+                ul {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+            Node::ListItem(ListItem { children, .. }) => {
+                li {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+            Node::InlineCode(InlineCode { value, .. }) => {
+                code {
+                    (value)
+                }
+            }
+            Node::Table(Table { children, align, .. }) => {
+                @let _x = {
+                    justlogfox::log_warn!("table align: {:?}", align);
+                    println!("table align: {:?}", align);
+                };
+                table {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+            Node::TableRow(TableRow { children, .. }) => {
+                tr {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+            Node::TableCell(TableCell { children, .. }) => {
+                td {
+                    @for child in children {
+                        (self.render_node(child, depth+1, tags))
+                    }
+                }
+            }
+
+            Node::Yaml(_) | Node::Root(_) => {
+                @let _ = panic!("root or yaml node passed to render_node");
+            }
+            _ => {
+                @let s = format!("{:?}", node);
+                @let y = s.split_ascii_whitespace().next().unwrap();
+                @let _ = todo!("render_node: {}", y);
+            }
+        }
+        }
+    }
+
+    pub fn render(&mut self, md_source: &str, mut out: Box<dyn std::io::Write>) -> MdResult {
+        justlogfox::log_trace!("rendering markdown source, {} bytes", (md_source.len()));
+
+        let mut options = markdown::Options::gfm();
+        options.parse.constructs.frontmatter = true;
+        let ast = markdown::to_mdast(md_source, &options.parse).unwrap();
+
+        let (frontmatter, html, tags) = self.render_root(ast);
+
+        write!(out, "{}", html)?;
 
         Ok(())
         // let mut parser = tree_sitter::Parser::new();

@@ -53,15 +53,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let opts = Options::parse();
 
+    justlogfox::verbose_verbose_verbose();
+
+    justlogfox::set_crate_color!(justlogfox::CssColors::Pink);
+
+    justlogfox::log_trace!("Start! (ToT)/~~~");
+
     let source_code = std::fs::read(&opts.input_file).unwrap();
 
     let output = 
         if let Some(ref path) = opts.output_file {
             
             if path == &PathBuf::from("stdout") {
+                justlogfox::log_trace!("output to stdout");
                 Box::new(std::io::BufWriter::new(std::io::stdout())) as Box<dyn Write>
             }
             else {
+                justlogfox::log_trace!("output to file {:?}", path);
                 Box::new(std::io::BufWriter::new(std::fs::File::create(path)?)) as Box<dyn Write>
             }
         }
@@ -75,6 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None => ".html",
                 };
                 let output_path = out_dir.join(stem + ext);
+                justlogfox::log_trace!("output to renamed default {:?}", output_path);
                 Box::new(std::io::BufWriter::new(std::fs::File::create(output_path)?)) as Box<dyn Write>
             }
             else {
@@ -91,23 +100,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     // mdnya.render(&source_code, output)?;
 
     let write_elapsed = time_write_start.elapsed();
-    if opts.verbose {
-        println!("write time: {:?}", write_elapsed);
-    }
-
-    
+    justlogfox::log_debug!("mdnya new() took {:?}", write_elapsed);
 
     let time_write_start2 = std::time::Instant::now();
     
     let source_str = std::str::from_utf8(&source_code).unwrap();
 
-    
     mdnya.render(source_str, output)?;
 
     // pulldown_cmark::html::write_html(output, parser).unwrap();
 
     let write_elapsed2 = time_write_start2.elapsed();
-    println!("write time: {:?}", write_elapsed2);
+    justlogfox::log_debug!("mdnya render() took {:?}", write_elapsed2);
 
     Ok(())
 }

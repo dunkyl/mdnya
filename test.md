@@ -1,7 +1,12 @@
-@{
+---
+has_front_matter: true
+seond_prop: "hello"
+---
+
+```{xx}
     ViewBag.Title = "Test";
     Model.Y = Model.X == "`what`";
-}
+```
 
 # This is *the* Title
 
@@ -21,11 +26,13 @@ Double star looks like **this** and has a space after it.
 
 Triple star looks like ***this***.
 
-Underscore looks like _this_.
+Underscore looks like _this_, which is the same as *single star*.
 
 Double underscore looke like __this__.
 
 With wigglies it looks like ~~this~~.
+
+Underlines can be done with 
 
 > Everything you read on the internet is true. 
 >
@@ -71,7 +78,6 @@ A way to make it not panic would be to use `println!()` instead of `panic!()`.
 
 
 | Tables |  Are  | Cool  |
-|--------|-------|-------|
 | col 1  | col 2 | col 3 |
 | col 4  | col 5 | col 6 |
 
@@ -88,7 +94,3 @@ TODO: wiki-links
 ```sh
 ffmpeg -i "my input video.mp4" -vf scale=1920:1080 -sws_flags neighbor "my output video.mp4"
 ```
-
-::: info
-this area is fenced with `::: info`
-:::

@@ -17,4 +17,6 @@ html-escape = "0.2.11"
 
 mdnya = { path = "../mdnya" }
 
+justlogfox = { path = "../../justlogfox", features = ["colors"] }
+
 [build-dependencies]

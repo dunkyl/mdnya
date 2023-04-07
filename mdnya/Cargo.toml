@@ -10,7 +10,11 @@ phf = { version = "0.11", features = ["macros"] }
 lazy_static = "1"
 regex = "1"
 dirs = "5"
-pulldown-cmark = "0.9"
+markdown = "1.0.0-alpha.7"
+serde_yaml = "0.9"
+maud = "0.24"
+
+justlogfox = { path = "../../justlogfox", features = ["colors"] }
 
 [build-dependencies]
 cc = "1"
