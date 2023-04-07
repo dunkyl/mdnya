@@ -24,9 +24,10 @@ rl.on('line', (line) => {
     } else if (lang && line === "") { // output code
         const s = starryNight.flagToScope(lang)
         if (!s) {
-            exit(1);
+            console.log(code)
+        } else {
+            console.log(toHtml(starryNight.highlight(code, s)))
         }
-        console.log(toHtml(starryNight.highlight(code, s)))
         console.log("\x04") // EOT
         lang = null;
         code = '';

@@ -46,7 +46,11 @@ impl HTMLWriter {
     }
 
     pub fn self_close_tag(&mut self, tag: impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
-        self.write_tag("<", tag.as_ref(), attrs, " />\n")
+        self.write_tag("<", tag.as_ref(), attrs, " />")?;
+        if !self.is_inline {
+            writeln!(self.writer, "")?;
+        }
+        Ok(())
     }
 
     pub fn end(&mut self, tag: impl AsRef<str>) -> std::io::Result<()> {
@@ -107,20 +111,4 @@ impl HTMLWriter {
         }
         self.exit_inline()
     }
-    
-    // pub fn start_section(&mut self, tag: & impl AsRef<str>) -> std::io::Result<()> {
-    //     println!("!start section");
-    //     self.start_tag(self.writer, tag, &[], true)?;
-    //     self.indent_level += 1;
-    //     self.inside_section = true;
-    //     Ok(())
-    // }
-
-    // pub fn end_section(&mut self, tag: & impl AsRef<str>) -> std::io::Result<()> {
-    //     println!("!end section");
-    //     self.indent_level = self.indent_level.saturating_sub(1);
-    //     self.end_tag(self.writer, tag)?;
-    //     self.inside_section = false;
-    //     Ok(())
-    // }
 }

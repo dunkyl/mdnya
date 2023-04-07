@@ -8,8 +8,8 @@ There is a front matter here. It has a `has_front_matter` property and a `second
 That is #cool. This line ends in a hastag #
 
 ```@
-    ViewBag.Title = "Test";
-    Model.Y = Model.X == "`what`";
+ViewBag.Title = "Test";
+Model.Y = Model.X == "`what`";
 ```
 
 # This is *the* Title
@@ -101,6 +101,11 @@ This is very strange. [Red Link]
 
 TODO: html tag elements
 TODO: wiki-links
+
+<aside class="testing">
+    <p>Here is some text in an aside element.
+    <p>It has a [wiki-link].
+</aside>
 
 ```sh
 ffmpeg -i "my input video.mp4" -vf scale=1920:1080 -sws_flags neighbor "my output video.mp4"

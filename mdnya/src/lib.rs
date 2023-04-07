@@ -1,15 +1,11 @@
 use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read, path::PathBuf};
 
-use markdown::Constructs;
-use maud::{Markup, PreEscaped};
 use phf::phf_map;
 use regex::Regex;
 use lazy_static::lazy_static;
 use tree_sitter::TreeCursor;
 
 mod html;
-
-extern "C" { fn tree_sitter_markdown() -> tree_sitter::Language; }
 
 type MdResult = core::result::Result<(), Box<dyn std::error::Error>>;
 
@@ -338,13 +334,13 @@ impl InOutProc {
 
 const INDEXJS_SRC: &str = include_str!("../../dist/bundle.cjs");
 
-fn ensure_indexjs() -> PathBuf {
+fn ensure_indexjs() -> std::io::Result<PathBuf> {
     let indexjs = dirs::data_local_dir().unwrap().join(".mdnya").join("bundle.cjs");
     if !indexjs.exists() {
-        std::fs::create_dir_all(indexjs.parent().unwrap()).unwrap();
-        std::fs::write(&indexjs, INDEXJS_SRC).unwrap();
+        std::fs::create_dir_all(indexjs.parent().unwrap())?;
+        std::fs::write(&indexjs, INDEXJS_SRC)?;
     }
-    indexjs
+    Ok(indexjs)
 }
 
 
@@ -354,21 +350,31 @@ impl MDNya {
 
     fn wait_for_starry(&mut self) {
         if self.hl_ready { return; }
-        println!("waiting for starry night");
+        let start = std::time::Instant::now();
+        justlogfox::log_info!("waiting for starry night");
         {
             let mut buf = [0u8; 6];
             self.hl_node_proc.out.read_exact(&mut buf).unwrap();
+            assert_eq!(&buf, b"ready\n");
         }
-        println!("starry night loaded :D");
+        let elapsed = start.elapsed();
+        justlogfox::log_info!("starry night loaded :D\ntook: {}ms", (elapsed.as_millis()));
         self.hl_ready = true;
     }
 
     pub fn new(close_all_tags: bool, wrap_sections: Option<String>, heading_level: u8, no_ids: bool,) -> Self {
         let indexjs = ensure_indexjs();
+        let Ok(indexjs) = indexjs else {
+            justlogfox::log_error!("failed to setup index.js");
+            std::process::exit(1);
+        };
+        justlogfox::log_info!("index.js bundled at {:?}", indexjs);
+        justlogfox::log_info!("starting node");
         let node = std::process::Command::new("node")
             .arg(indexjs)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn().expect("node not found");
         let proc = InOutProc::new(node);
         Self { 
@@ -468,7 +474,10 @@ impl MDNya {
             first_child.into_iter().chain(children_iter)
         };
         let mut tags = vec![];
-        self.render_children(rest_children, &mut tags, htmler).unwrap();
+        let result = self.render_children(rest_children, &mut tags, htmler);
+        if let Err(e) = result {
+            justlogfox::log_error!("error while rendering: {}", e);
+        }
         (frontmatter, tags)
     }
 
@@ -487,11 +496,7 @@ impl MDNya {
         htmler.start("table", &[])?;
 
         if let Some(caption) = caption {
-            htmler.enter_inline()?;
-            htmler.start("caption", &[])?;
-            self.render_children(caption, tags, htmler)?;
-            htmler.end("caption")?;
-            htmler.exit_inline()?;
+            self.simple_inline_tag("caption", caption, tags, htmler)?;
         }
 
         htmler.start("thead", &[])?;
@@ -564,18 +569,37 @@ impl MDNya {
         Ok(())
     }
 
+    fn simple_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
+        htmler.start(tag, &[])?;
+        self.render_children(children, tags, htmler)?;
+        htmler.end(tag)?;
+        Ok(())
+    }
+
+    fn simple_inline_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
+        htmler.enter_inline()?;
+        self.simple_tag(tag, children, tags, htmler)?;
+        htmler.exit_inline()?;
+        Ok(())
+    }
+
     fn render_node(&mut self, node: markdown::mdast::Node, depth: usize, tags: &mut  Vec<String>, htmler: &mut html::HTMLWriter) -> MdResult {
         use markdown::mdast::*;
         match node {
             Node::Heading(Heading { children, depth, .. }) => {
+
+                lazy_static! {
+                    static ref FRAGMENT_REMOVE_RE: Regex = Regex::new(r"[^a-zA-Z0-9-]").unwrap();
+                }
+
                 let tag = format!("h{}", (depth + self.heading_level) as isize - 1);
-                let fragment = children.iter().fold(String::new(), |acc, node| acc + node.to_string().as_str()).to_ascii_lowercase().replace(" ", "-");
+                let fragment =
+                    children.iter().fold(String::new(), |acc, node| acc + node.to_string().as_str())
+                    .to_ascii_lowercase().replace(" ", "-");
+                let fragment = FRAGMENT_REMOVE_RE.replace_all(&fragment, "");
                 justlogfox::log_debug!("heading: {} {}", tag, fragment);
-                htmler.enter_inline()?;
-                htmler.start(&tag, &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end(tag)?;
-                htmler.exit_inline()?;
+                
+                self.simple_inline_tag(&tag, children, tags, htmler)?;
             }
             Node::Text(Text { value, .. }) => {
 
@@ -592,36 +616,23 @@ impl MDNya {
                 htmler.write_text(value)?;
             }
             Node::Emphasis(Emphasis { children, .. }) => {
-                htmler.start("em", &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("em")?;
+                self.simple_tag("em", children, tags, htmler)?;
             }
             Node::Strong(Strong { children, .. }) => {
-                htmler.start("strong", &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("strong")?;
+                self.simple_tag("strong", children, tags, htmler)?;
             }
             Node::Delete(Delete { children, .. }) => {
-                htmler.start("del", &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("del")?;
+                self.simple_tag("del", children, tags, htmler)?;
             }
             Node::BlockQuote(BlockQuote { children, .. }) => {
-                htmler.start("blockquote", &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("blockquote")?;
+                self.simple_tag("blockquote", children, tags, htmler)?;
             }
             Node::Paragraph(Paragraph { children, .. }) => {
 
                 if children.len() != 1
                    || !matches!(children[0], Node::Image(_)) {
                     
-                    htmler.enter_inline()?;
-                    htmler.start("p", &[])?;
-                    self.render_children(children, tags, htmler)?;
-                    htmler.end("p")?;
-                    // htmler.end_implicit();
-                    htmler.exit_inline()?;
+                    self.simple_inline_tag("p", children, tags, htmler)?;
                     
                 } else {
                     let mut nodes = children.into_iter();
@@ -644,6 +655,17 @@ impl MDNya {
             }
             Node::Code(Code { value, lang, meta, .. }) => {
                 if meta != None { todo!("meta was {:?}", meta); }
+                let lang = lang.as_deref();
+
+                justlogfox::log_debug!("code: {:?}\n{}", lang, value);
+
+                let mut attrs = vec![];
+                if Some("@") == lang && self.razor { // special case for razor code block
+                    htmler.write_html("@{\n")?;
+                    htmler.write_html(value)?;
+                    htmler.write_html("\n}")?;
+                    return Ok(());
+                }
 
                 let add_code_lines = 
                     if self.no_code_lines {
@@ -655,21 +677,71 @@ impl MDNya {
                             }).collect::<Vec<_>>().join("\n")
                         }
                     };
+                
+                let code =
+                    if let Some(info) = lang {
+                        let adm_match = RE_ADMONITION.captures(info);
+                        if let Some(captures) = adm_match {
+                            let class = captures.name("class").unwrap().as_str();
+                            let title = captures.name("title")
+                                                .map(|m| m.as_str())
+                                                .map(ToString::to_string)
+                                                .unwrap_or_else(|| to_title_case(class));
+                            let class_attr = format!("admonition {class}");
+                            htmler.start(&"div", &[("class", Some(&class_attr))])?;
+                            htmler.enter_inline()?;
+                            htmler.start(&"h3", &[])?;
+                            htmler.write_text(title)?;
+                            htmler.end(&"h3")?;
+                            htmler.exit_inline()?;
+                            htmler.enter_inline()?;
+                            htmler.start(&"p", &[])?;
+                            htmler.write_text(value)?;
+                            htmler.end(&"p")?;
+                            htmler.exit_inline()?;
+                            htmler.end(&"div")?;
+                            return Ok(());
+                        }
 
-                let code = html_escape::encode_text(&value);
+
+
+                        attrs.push(("data-lang", Some(info)));
+                        let lang_name = RENAME_LANGS.get(info).unwrap_or(&info);
+                        justlogfox::log_debug!("try highlight language: {} ", lang_name);
+                        self.wait_for_starry();
+
+                        let nodein = &mut self.hl_node_proc.in_;
+                        let nodeout = &mut self.hl_node_proc.out;
+                        writeln!(nodein, "{}", lang_name)?;
+                        for line in value.lines() {
+                            writeln!(nodein, "\t{}", line)?;
+                        }
+                        writeln!(nodein, "")?;
+                        let mut hl = String::new();
+                        loop {
+                            let mut buf = [0u8; 1024];
+                            let mut n = nodeout.take(1024).read(&mut buf)?;
+                            justlogfox::log_trace!("read {} bytes from node", n);
+                            if n == 0 { break; }
+                            let mut end_text = false;
+                            if n >= 2 && buf[n-2] == 0x04 { // EOT
+                                end_text = true;
+                                n -= 2;
+                            } 
+                            hl.push_str(std::str::from_utf8(&buf[..n]).unwrap());
+                            if end_text { break; }
+                        }
+                        hl
+                    } else {
+                        html_escape::encode_text(&value).to_string()
+                    };
+                
+
                 let code = add_code_lines(&code);
-
 
                 htmler.enter_inline()?;
                 htmler.start("pre", &[])?;
-                if let Some(lang) = lang {
-                    if self.razor && lang.as_str() == "@" {
-                        return Ok(());
-                    }
-                    htmler.start("code", &[("data-lang", Some(lang.as_str()))])?;
-                } else {
-                    htmler.start("code", &[])?;
-                }
+                htmler.start("code", &attrs)?;
                 htmler.write_html(code)?;
                 htmler.end("code")?;
                 htmler.end("pre")?;
@@ -678,20 +750,32 @@ impl MDNya {
             Node::ThematicBreak(ThematicBreak {..}) => {
                 htmler.self_close_tag("hr", &[])?;
             }
-            Node::List(List { children, ordered: true, .. }) => {
-                htmler.start("ol", &[])?;
+            Node::List(List { children, start: Some(start_i), .. }) => {
+                let start_str = start_i.to_string();
+                let attrs =
+                    if start_i != 1 {
+                        vec![("start", Some(start_str.as_str()))]
+                    } else {
+                        vec![]
+                    };
+                htmler.start("ol", &attrs)?;
                 self.render_children(children, tags, htmler)?;
                 htmler.end("ol")?;
             }
-            Node::List(List { children, ordered: false, .. }) => {
-                htmler.start("ul", &[])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("ul")?;
+            Node::List(List { children, start: None, .. }) => {
+                self.simple_tag("ul", children, tags, htmler)?;
             }
-            Node::ListItem(ListItem { children, .. }) => {
+            Node::ListItem(ListItem { children, checked, .. }) => {
 
                 htmler.enter_inline()?;
                 htmler.start("li", &[])?;
+
+                if let Some(is_checked) = checked {
+                    let mut attrs = vec![("type", Some("checkbox")), ("disabled", None)];
+                    if is_checked { attrs.push(("checked", None)) }
+
+                    htmler.self_close_tag("input", &attrs)?;
+                }
 
                 if children.len() != 1
                    || !matches!(children[0], Node::Paragraph(_)) {
@@ -705,8 +789,8 @@ impl MDNya {
 
                     self.render_children(children, tags, htmler)?;
                 }
+                
                 htmler.end("li")?;
-                // htmler.end_implicit();
                 htmler.exit_inline()?;
             }
             Node::InlineCode(InlineCode { value, .. }) => {
@@ -717,6 +801,14 @@ impl MDNya {
             Node::Table(table) => { // table has no caption
                 self.render_table(table, None, tags, htmler)?;
             }
+            Node::Html(Html { value, .. }) => {
+                htmler.write_html("\n")?;
+                htmler.write_html(value)?;
+                htmler.write_html("\n")?;
+            }
+
+
+
             Node::TableRow(_) |
             Node::TableCell(_) => {
                 panic!("table row or cell passed to render_node");
@@ -751,25 +843,10 @@ impl MDNya {
 
         let (frontmatter, tags) = self.render_root(ast, &mut html_writer);
 
-        // let mut parser = tree_sitter::Parser::new();
-        // parser.set_language(tree_sitter_markdown::language()).unwrap();
-        // let tree = parser.parse(md_source, None).unwrap();
-        // let mut cur = tree.root_node().walk();
-        // let mut helper = html::HTMLWriter {
-        //     is_inline: false,
-        //     close_all_tags: self.close_all_tags,
-        //     indent: 4,
-        //     indent_level: 0,
-        //     writer: out,
-        // };
-        // let mut state = MDNyaState { inside_section: false };
-        // self.render_elem(md_source.as_bytes(), &mut cur, &mut helper, &mut state)?;
-        // if state.inside_section {
-        //     if let Some(section_tag) = &self.wrap_sections {
-        //         helper.end(section_tag)?;
-        //         state.inside_section = false;
-        //     }
-        // }
+        for tag in tags {
+            justlogfox::log_trace!("collected tag: #{}", tag);
+        }
+
         Ok(())
     }
 }
