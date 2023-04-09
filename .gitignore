@@ -4,5 +4,7 @@
 *.dll
 *.obj
 *.cjs
+test.json
+readme.json
 /tree-sitter-builds
 node_modules

@@ -8,15 +8,10 @@ name = "mdnya"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.0.18", features = ["derive"] }
-tree-sitter = "0.20.9"
-tree-sitter-highlight = "0.20.1"
+clap = { version = "4", features = ["derive"] }
 regex = "1"
 lazy_static = "1.4.0"
 html-escape = "0.2.11"
-
 mdnya = { path = "../mdnya" }
-
+serde_json = "^1.0"
 justlogfox = { path = "../../justlogfox", features = ["colors"] }
-
-[build-dependencies]

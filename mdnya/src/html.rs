@@ -1,12 +1,15 @@
-pub struct HTMLWriter {
+pub struct HTMLWriter<'a> {
     pub is_inline: bool,
     pub indent: usize,
     pub indent_level: usize,
     pub close_all_tags: bool,
-    pub writer: Box<dyn std::io::Write>,
+    pub writer: Box<dyn std::io::Write + 'a>,
+    pub section: Option<String>
 }
 
-impl HTMLWriter {
+pub const NO_ATTRS : &[(&str, Option<&str>)] = &[];
+
+impl<'a> HTMLWriter<'a> {
     fn write_indent(&mut self) -> std::io::Result<()> {
         for _ in 0..self.indent_level {
             for _ in 0..self.indent {
@@ -16,7 +19,7 @@ impl HTMLWriter {
         Ok(())
     }
 
-    fn write_tag(&mut self, before: &str, tag: &str, attrs: &[(&str, Option<&str>)], after: &str) -> std::io::Result<()> {
+    fn write_tag(&mut self, before: &str, tag: &str, attrs: &[(&str, Option<impl AsRef<str>>)], after: &str) -> std::io::Result<()> {
         if !self.is_inline {
             writeln!(self.writer, "")?;
             self.write_indent()?;
@@ -25,7 +28,7 @@ impl HTMLWriter {
         for (k, v) in attrs {
             let k = html_escape::encode_text_minimal(k);
             if let Some(v) = v {
-                write!(self.writer, " {k}=\"{}\"", html_escape::encode_quoted_attribute(v))?;
+                write!(self.writer, " {k}=\"{}\"", html_escape::encode_quoted_attribute(v.as_ref()))?;
             } else {
                 write!(self.writer, " {k}")?;
             }
@@ -34,7 +37,7 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn start(&mut self, tag: impl AsRef<str>, attrs: &[(&str, Option<&str>)]) -> std::io::Result<()> {
+    pub fn start(&mut self, tag: impl AsRef<str>, attrs: &[(&str, Option<impl AsRef<str>>)]) -> std::io::Result<()> {
         // if !self.is_inline && self.indent_level == 0 {
         //     writeln!(self.writer, "")?;
         // }
@@ -59,7 +62,8 @@ impl HTMLWriter {
         }
         let tag = tag.as_ref();
         if self.close_all_tags || !["p", "li"].contains(&tag) {
-            self.write_tag("</", tag, &[], ">")?;
+            let attrs: &[(&str, Option<&str>)] = &[];
+            self.write_tag("</", tag, attrs, ">")?;
         }
         if !self.is_inline && self.indent_level == 0 {
             writeln!(self.writer, "")?;
@@ -67,21 +71,10 @@ impl HTMLWriter {
         Ok(())
     }
 
-    pub fn end_implicit(&mut self) {
-        if !self.is_inline && self.indent_level > 0 {
-            self.indent_level -= 1;
-        }
-    }
-
     pub fn enter_inline(&mut self) -> std::io::Result<()> {
         self.is_inline = true;
         writeln!(self.writer, "")?;
         self.write_indent()
-    }
-
-    pub fn enter_inline_s(&mut self) -> std::io::Result<()> {
-        self.is_inline = true;
-        Ok(())
     }
 
     pub fn exit_inline(&mut self) -> std::io::Result<()> {
@@ -92,23 +85,29 @@ impl HTMLWriter {
         Ok(())
     }
 
+    pub fn enter_section(&mut self, tag: impl ToString) -> std::io::Result<()> {
+        if let Some(tag) = self.section.take() {
+            self.end(&tag)?;
+        }
+        let tag = tag.to_string();
+        self.start(&tag, NO_ATTRS)?;
+        self.section = Some(tag);
+        Ok(())
+    }
+
+    pub fn maybe_exit_section(&mut self) -> std::io::Result<()> {
+        if let Some(tag) = self.section.take() {
+            self.end(&tag)
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn write_html(&mut self, raw: impl AsRef<str>) -> std::io::Result<()> {
         write!(self.writer, "{}", raw.as_ref())
     }
 
     pub fn write_text(&mut self, text: impl AsRef<str>) -> std::io::Result<()> {
         write!(self.writer, "{}", html_escape::encode_text(text.as_ref()))
-    }
-
-    pub fn push_elem(&mut self, tags: &[&str], text: impl AsRef<str>) -> std::io::Result<()> {
-        self.enter_inline()?;
-        for tag in tags {
-            self.start(tag, &[])?;
-        }
-        self.write_text(text)?;
-        for tag in tags {
-            self.end(tag)?;
-        }
-        self.exit_inline()
     }
 }

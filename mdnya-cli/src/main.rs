@@ -14,6 +14,10 @@ struct Options {
     #[clap(short, long="output")]
     output_file: Option<PathBuf>,
 
+    /// JSON file for metadata
+    #[clap(short, long="metadata")]
+    metadata_file: Option<PathBuf>,
+
     /// Include closing tags for <p> and <li> elements
     #[clap(short, long="close-all-tags")]
     close_all_tags: bool,
@@ -93,7 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let time_write_start = std::time::Instant::now();
 
-    let mut mdnya = MDNya::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, opts.no_ids);
+    let mut mdnya = MDNya::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, !opts.no_ids);
     
     // let source_code = std::str::from_utf8(&source_code).unwrap();
 
@@ -106,7 +110,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let source_str = std::str::from_utf8(&source_code).unwrap();
 
-    mdnya.render(source_str, output)?;
+    let meta = mdnya.render(source_str, output)?;
+
+    if let Some(path) = &opts.metadata_file {
+        let json = serde_json::to_string_pretty(&meta)?;
+        std::fs::write(path, json)?;
+    }
 
     // pulldown_cmark::html::write_html(output, parser).unwrap();
 
