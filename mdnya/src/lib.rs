@@ -150,12 +150,12 @@ impl MDNya {
         for tag in &tags.1 {
             justlogfox::log_trace!("collected tag: #{}", tag);
         }
-        let meta = DocumentMetaData {
+        
+        DocumentMetaData {
             title: tags.0,
             tags: tags.1,
             frontmatter
-        };
-        meta
+        }
     }
 
     fn render_table(&mut self, table: markdown::mdast::Table, caption: Option<Vec<markdown::mdast::Node>>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
@@ -170,14 +170,13 @@ impl MDNya {
 
         let mut col_num = 0;
         let n_cols = align.len();
-        let attrs: &[(&str, Option<&str>)] = &[];
-        htmler.start("table", attrs)?;
+        htmler.start("table", NO_ATTRS)?;
 
         if let Some(caption) = caption {
             self.simple_inline_tag("caption", caption, tags, htmler)?;
         }
 
-        htmler.start("thead", attrs)?;
+        htmler.start("thead", NO_ATTRS)?;
 
         let mut rows = children.into_iter();
 
@@ -187,19 +186,15 @@ impl MDNya {
             let Node::TableCell(TableCell { children, .. }) = cell
                 else { panic!("non-cell in table row") };
             let cell_attrs = &align_attrs[col_num];
-            htmler.enter_inline()?;
-            htmler.start("th", cell_attrs)?;
-            self.render_children(children, tags, htmler)?;
-            htmler.end("th")?;
-            htmler.exit_inline()?;
+            self.inline_tag("th", cell_attrs, children, tags, htmler)?;
             col_num = (col_num + 1) % n_cols;
         }
         htmler.end("thead")?;
-        htmler.start("tbody", attrs)?;
+        htmler.start("tbody", NO_ATTRS)?;
         for row in rows {
             let Node::TableRow(TableRow { children: cells, .. }) = row
                 else { panic!("non-row in table") };
-            htmler.start("tr", attrs)?;
+            htmler.start("tr", NO_ATTRS)?;
             for cell in cells {
                 let Node::TableCell(TableCell { children, .. }) = cell
                     else { panic!("non-cell in table row") };
@@ -247,26 +242,22 @@ impl MDNya {
         Ok(())
     }
 
-    fn tag(&mut self, tag: &str, attrs: Vec<(&str, Option<impl AsRef<str>>)>, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
-        htmler.start(tag, attrs.as_slice())?;
+    fn tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+        htmler.start(tag, attrs)?;
         self.render_children(children, tags, htmler)?;
         htmler.end(tag)?;
         Ok(())
     }
 
     fn simple_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
-        let attrs: Vec<(&str, Option<&str>)> = vec![];
-        self.tag(tag, attrs, children, tags, htmler)?;
-        Ok(())
+        self.tag(tag, NO_ATTRS, children, tags, htmler)
     }
 
     fn simple_inline_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
-        let attrs: Vec<(&str, Option<&str>)> = vec![];
-        self.inline_tag(tag, attrs, children, tags, htmler)?;
-        Ok(())
+        self.inline_tag(tag, NO_ATTRS, children, tags, htmler)
     }
 
-    fn inline_tag(&mut self, tag: &str, attrs: Vec<(&str, Option<impl AsRef<str>>)>, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn inline_tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
         htmler.enter_inline()?;
         self.tag(tag, attrs, children, tags, htmler)?;
         htmler.exit_inline()?;
@@ -291,7 +282,7 @@ impl MDNya {
                     let fragment = children.iter()
                                    .fold(String::new(), |acc, node| acc + node.to_string().as_str())
                                    .to_ascii_lowercase()
-                                   .replace(" ", "-");
+                                   .replace(' ', "-");
                     let fragment = FRAGMENT_REMOVE_RE.replace_all(&fragment, "").to_string();
                     
                     attrs.push(("id", Some(fragment)));
@@ -301,28 +292,22 @@ impl MDNya {
                 
                 justlogfox::log_debug!("heading: {} {:?}", tag, attrs);
 
-                if (tags.0.is_none()) && (tag == "h1") {
+                // capture title HTML for metadata
+                if (tags.0.is_none()) && (tag == "h1") && (htmler.indent_level == 0) {
                     let mut tempbuf: Vec<u8> = vec![];
                     {
                         let tempwriter = Box::new(&mut tempbuf);
-                        let mut temphtmler = html::HTMLWriter {
-                            is_inline: false,
-                            indent: htmler.indent,
-                            indent_level: htmler.indent_level,
-                            close_all_tags: htmler.close_all_tags,
-                            section: None,
-                            writer: tempwriter,
-                        };
+                        let mut temphtmler = html::HTMLWriter::new(tempwriter, htmler.indent, htmler.close_all_tags);
 
-                        self.inline_tag(&tag, attrs, children, tags, &mut temphtmler)?;
+                        self.inline_tag(&tag, &attrs, children, tags, &mut temphtmler)?;
                     }
 
-                    let titlehtml = String::from_utf8(tempbuf).unwrap().splitn(2, ">").skip(1).next().unwrap().replace("</h1>", "").trim().to_string();
+                    let titlehtml = String::from_utf8(tempbuf).unwrap().split_once('>').unwrap().1.replace("</h1>", "").trim().to_string();
                     htmler.write_html(&titlehtml)?;
                     tags.0 = Some(titlehtml);
                 }
                 else {
-                    self.inline_tag(&tag, attrs, children, tags, htmler)?;
+                    self.inline_tag(&tag, &attrs, children, tags, htmler)?;
                 }
 
 
@@ -368,27 +353,25 @@ impl MDNya {
                     let Node::Image(Image { url, title, alt, .. }) = nodes.next().unwrap()
                         else { unreachable!(); };
 
-                    if title != None { todo!("title was {:?}", title); }
+                    if title.is_some() { todo!("title was {:?}", title); }
                     htmler.self_close_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))])?;
                 }
             },
             Node::Link(Link { children, url, title, .. }) => {
-                if title != None { todo!("title was {:?}", title); }
-                htmler.start("a", &[("href", Some(&url))])?;
-                self.render_children(children, tags, htmler)?;
-                htmler.end("a")?;
+                if title.is_some() { todo!("title was {:?}", title); }
+                self.tag("a", &[("href", Some(&url))], children, tags, htmler)?;
             }
             Node::Image(Image { url, title, alt, .. }) => {
-                if title != None { todo!("title was {:?}", title); }
+                if title.is_some() { todo!("title was {:?}", title); }
                 htmler.self_close_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))])?;
             }
             Node::Code(Code { value, lang, meta, .. }) => {
-                if meta != None { todo!("meta was {:?}", meta); }
+                if meta.is_some() { todo!("meta was {:?}", meta); }
                 let lang = lang.as_deref();
 
                 justlogfox::log_debug!("code: {:?}\n{}", lang, value);
 
-                let mut attrs = vec![];
+                
                 if Some("@") == lang && self.razor { // special case for razor code block
                     htmler.write_html("@{\n")?;
                     htmler.write_html(value)?;
@@ -410,7 +393,7 @@ impl MDNya {
                 lazy_static! {
                     static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}\w*((?P<title>\w[\w\s]*))?").unwrap();
                 }
-                
+                let mut attrs = vec![];
                 let code =
                     if let Some(info) = lang {
                         let adm_match = RE_ADMONITION.captures(info);
@@ -421,25 +404,23 @@ impl MDNya {
                                                 .map(ToString::to_string)
                                                 .unwrap_or_else(|| to_title_case(class));
                             let class_attr = format!("admonition {class}");
-                            htmler.start(&"div", &[("class", Some(&class_attr))])?;
+                            htmler.start("div", &[("class", Some(&class_attr))])?;
                             htmler.enter_inline()?;
-                            htmler.start(&"h3", NO_ATTRS)?;
+                            htmler.start("h3", NO_ATTRS)?;
                             htmler.write_text(title)?;
-                            htmler.end(&"h3")?;
+                            htmler.end("h3")?;
                             htmler.exit_inline()?;
                             htmler.enter_inline()?;
-                            htmler.start(&"p", NO_ATTRS)?;
+                            htmler.start("p", NO_ATTRS)?;
                             htmler.write_text(value)?;
-                            htmler.end(&"p")?;
+                            htmler.end("p")?;
                             htmler.exit_inline()?;
-                            htmler.end(&"div")?;
+                            htmler.end("div")?;
                             return Ok(());
                         }
 
-
-
                         attrs.push(("data-lang", Some(info)));
-                        let lang_name = self.rename_langs.get(info).map(String::as_str).unwrap_or(&info).to_string();
+                        let lang_name = self.rename_langs.get(info).map(String::as_str).unwrap_or(info).to_string();
                         justlogfox::log_debug!("try highlight language: {} ", lang_name);
                         self.wait_for_starry();
 
@@ -449,7 +430,7 @@ impl MDNya {
                         for line in value.lines() {
                             writeln!(nodein, "\t{}", line)?;
                         }
-                        writeln!(nodein, "")?;
+                        writeln!(nodein)?;
                         let mut hl = String::new();
                         loop {
                             let mut buf = [0u8; 1024];
@@ -566,14 +547,7 @@ impl MDNya {
         options.parse.constructs.frontmatter = true;
         let ast = markdown::to_mdast(md_source, &options.parse).unwrap();
 
-        let mut html_writer = html::HTMLWriter {
-            is_inline: false,
-            close_all_tags: self.close_all_tags,
-            indent: 4,
-            indent_level: 0,
-            writer: out,
-            section: None
-        };
+        let mut html_writer = html::HTMLWriter::new(out, 4, self.close_all_tags);
 
         let meta = self.render_root(ast, &mut html_writer);
 
