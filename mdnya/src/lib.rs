@@ -1,34 +1,16 @@
-use std::{process::{Child, ChildStdin, ChildStdout, Stdio}, io::Write, io::Read, path::PathBuf, collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error};
 
 use regex::Regex;
 use lazy_static::lazy_static;
+use serde::Serialize;
 
 use crate::html::NO_ATTRS;
 
 mod html;
+mod starry;
+pub use starry::StarryHighlighter;
 
-type MdResult = core::result::Result<(), Box<dyn std::error::Error>>;
-
-fn to_title_case(s: impl AsRef<str>) -> String {
-    let mut c = s.as_ref().chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().chain(c).collect()
-    }
-}
-pub struct MDNya {
-    close_all_tags: bool,
-    wrap_sections: Option<String>,
-    heading_level: u8,
-    add_header_ids: bool,
-    no_code_lines: bool,
-    hl_node_proc: InOutProc,
-    hl_ready: bool,
-    razor: bool,
-    rename_langs: std::collections::HashMap<String, String>,
-}
-
-use serde::Serialize;
+pub type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Serialize)]
 pub struct DocumentMetaData {
@@ -37,86 +19,61 @@ pub struct DocumentMetaData {
     frontmatter: serde_yaml::Mapping,
 }
 
-impl Drop for MDNya {
-    fn drop(&mut self) {
-        self.hl_node_proc.proc.kill().unwrap();
+fn to_title_case(s: impl AsRef<str>) -> String {
+    let mut c = s.as_ref().chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().chain(c).collect()
     }
 }
-
-
-struct InOutProc {
-    proc: Child,
-    in_: ChildStdin,
-    out: ChildStdout,
+pub struct MdnyaOptions {
+    close_all_tags: bool,
+    wrap_sections: Option<String>,
+    heading_level: u8,
+    add_header_ids: bool,
+    no_code_lines: bool,
+    razor: bool,
+    highlighter: Box<dyn starry::Highlighter>,
 }
 
-impl InOutProc {
-    fn new(mut proc: Child) -> Self {
-        let in_ = proc.stdin.take().unwrap();
-        let out = proc.stdout.take().unwrap();
-        Self { proc, in_, out }
-    }
+struct MdnyaRenderer<'a> {
+    options: MdnyaOptions,
+    html_writer: html::HTMLWriter<'a>,
+    highlighter: Box<dyn starry::Highlighter>,
 }
 
-const INDEXJS_SRC: &str = include_str!("../../dist/bundle.cjs");
-
-fn ensure_indexjs() -> std::io::Result<PathBuf> {
-    let indexjs = dirs::data_local_dir().unwrap().join(".mdnya").join("bundle.cjs");
-    if !indexjs.exists() {
-        std::fs::create_dir_all(indexjs.parent().unwrap())?;
-        std::fs::write(&indexjs, INDEXJS_SRC)?;
-    }
-    Ok(indexjs)
-}
-
-
-
-
-impl MDNya {
-
-    fn wait_for_starry(&mut self) {
-        if self.hl_ready { return; }
-        let start = std::time::Instant::now();
-        justlogfox::log_info!("waiting for starry night");
-        {
-            let mut buf = [0u8; 6];
-            self.hl_node_proc.out.read_exact(&mut buf).unwrap();
-            assert_eq!(&buf, b"ready\n");
+impl<'a> MdnyaRenderer<'a> {
+    fn new(output: Box<dyn std::io::Write + 'a>, options: MdnyaOptions, hl: Box<dyn starry::Highlighter>) -> Self {
+        Self {
+            html_writer: html::HTMLWriter::new(output, 4, options.close_all_tags),
+            options,
+            highlighter: hl,
         }
-        let elapsed = start.elapsed();
-        justlogfox::log_info!("starry night loaded :D\ntook: {}ms", (elapsed.as_millis()));
-        self.hl_ready = true;
     }
+
+    fn render(input: &str) {
+
+    }
+}
+
+pub fn render_markdown<'a>(input: impl AsRef<str>, output: &'a mut impl std::io::Write, options: MdnyaOptions, hl: Box<dyn starry::Highlighter>) -> Result<()> {
+    let mut renderer = MdnyaRenderer::new(Box::new(output), options, hl);
+    Ok(())
+}
+
+
+
+impl MdnyaOptions {
 
     pub fn new(close_all_tags: bool, wrap_sections: Option<String>, heading_level: u8, add_header_ids: bool) -> Self {
-        let indexjs = ensure_indexjs();
-        let Ok(indexjs) = indexjs else {
-            justlogfox::log_error!("failed to setup index.js");
-            std::process::exit(1);
-        };
-        justlogfox::log_info!("index.js bundled at {:?}", indexjs);
-        justlogfox::log_info!("starting node");
-        let node = std::process::Command::new("node")
-            .arg(indexjs)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn().expect("node not found");
-        let proc = InOutProc::new(node);
-        let rename_langs = HashMap::from([
-            ("md".to_string(), "markdown".to_string()),
-            ("sh".to_string(), "bash".to_string())
-            ]);
         Self { 
             close_all_tags,
             wrap_sections,
             heading_level,
             add_header_ids,
             no_code_lines: false,
-            hl_node_proc: proc,
-            hl_ready: false,
             razor: false,
-            rename_langs
+            highlighter: Box::new(StarryHighlighter::new(HashMap::new())),
         }
     }
 
@@ -158,7 +115,7 @@ impl MDNya {
         }
     }
 
-    fn render_table(&mut self, table: markdown::mdast::Table, caption: Option<Vec<markdown::mdast::Node>>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn render_table(&mut self, table: markdown::mdast::Table, caption: Option<Vec<markdown::mdast::Node>>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> Result<()> {
         use markdown::mdast::*;
         let Table { children, align, .. } = table;
         let align_attrs = align.iter().map(|align| match align {
@@ -173,7 +130,7 @@ impl MDNya {
         htmler.start("table", NO_ATTRS)?;
 
         if let Some(caption) = caption {
-            self.simple_inline_tag("caption", caption, tags, htmler)?;
+            self.inline_tag("caption", NO_ATTRS, caption, tags, htmler)?;
         }
 
         htmler.start("thead", NO_ATTRS)?;
@@ -213,7 +170,7 @@ impl MDNya {
         Ok(())
     } 
 
-    fn render_children(&mut self, children: impl IntoIterator<Item=markdown::mdast::Node>, tags: &mut  (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn render_children(&mut self, children: impl IntoIterator<Item=markdown::mdast::Node>, tags: &mut  (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> Result<()> {
         use markdown::mdast::*;
 
         // this is for table captions:
@@ -242,29 +199,21 @@ impl MDNya {
         Ok(())
     }
 
-    fn tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> Result<()> {
         htmler.start(tag, attrs)?;
         self.render_children(children, tags, htmler)?;
         htmler.end(tag)?;
         Ok(())
     }
 
-    fn simple_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
-        self.tag(tag, NO_ATTRS, children, tags, htmler)
-    }
-
-    fn simple_inline_tag(&mut self, tag: &str, children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
-        self.inline_tag(tag, NO_ATTRS, children, tags, htmler)
-    }
-
-    fn inline_tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn inline_tag(&mut self, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], children: Vec<markdown::mdast::Node>, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> Result<()> {
         htmler.enter_inline()?;
         self.tag(tag, attrs, children, tags, htmler)?;
         htmler.exit_inline()?;
         Ok(())
     }
 
-    fn render_node(&mut self, node: markdown::mdast::Node, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> MdResult {
+    fn render_node(&mut self, node: markdown::mdast::Node, tags: &mut (Option<String>, Vec<String>), htmler: &mut html::HTMLWriter) -> Result<()> {
         use markdown::mdast::*;
         match node {
             Node::Heading(Heading { children, depth, .. }) => {
@@ -330,23 +279,23 @@ impl MDNya {
                 htmler.write_text(value)?;
             }
             Node::Emphasis(Emphasis { children, .. }) => {
-                self.simple_tag("em", children, tags, htmler)?;
+                self.tag("em", NO_ATTRS, children, tags, htmler)?;
             }
             Node::Strong(Strong { children, .. }) => {
-                self.simple_tag("strong", children, tags, htmler)?;
+                self.tag("strong", NO_ATTRS, children, tags, htmler)?;
             }
             Node::Delete(Delete { children, .. }) => {
-                self.simple_tag("del", children, tags, htmler)?;
+                self.tag("del", NO_ATTRS, children, tags, htmler)?;
             }
             Node::BlockQuote(BlockQuote { children, .. }) => {
-                self.simple_tag("blockquote", children, tags, htmler)?;
+                self.tag("blockquote", NO_ATTRS, children, tags, htmler)?;
             }
             Node::Paragraph(Paragraph { children, .. }) => {
 
                 if children.len() != 1
                    || !matches!(children[0], Node::Image(_)) {
                     
-                    self.simple_inline_tag("p", children, tags, htmler)?;
+                    self.inline_tag("p", NO_ATTRS, children, tags, htmler)?;
                     
                 } else {
                     let mut nodes = children.into_iter();
@@ -369,7 +318,7 @@ impl MDNya {
                 if meta.is_some() { todo!("meta was {:?}", meta); }
                 let lang = lang.as_deref();
 
-                justlogfox::log_debug!("code: {:?}\n{}", lang, value);
+                justlogfox::log_trace!("code: {:?}\n{}", lang, value);
 
                 
                 if Some("@") == lang && self.razor { // special case for razor code block
@@ -384,7 +333,7 @@ impl MDNya {
                         |text: &str| text.trim_end().to_string()
                     } else {
                         |text: &str| {
-                            text.trim_end().split('\n').map(|line| {
+                            text.trim_end().lines().map(|line| {
                                 format!("<span class=\"code-line\">{line}</span>")
                             }).collect::<Vec<_>>().join("\n")
                         }
@@ -420,32 +369,10 @@ impl MDNya {
                         }
 
                         attrs.push(("data-lang", Some(info)));
-                        let lang_name = self.rename_langs.get(info).map(String::as_str).unwrap_or(info).to_string();
-                        justlogfox::log_debug!("try highlight language: {} ", lang_name);
-                        self.wait_for_starry();
+                        
+                        self.highlighter.highlight(info, &value)?
 
-                        let nodein = &mut self.hl_node_proc.in_;
-                        let nodeout = &mut self.hl_node_proc.out;
-                        writeln!(nodein, "{}", lang_name)?;
-                        for line in value.lines() {
-                            writeln!(nodein, "\t{}", line)?;
-                        }
-                        writeln!(nodein)?;
-                        let mut hl = String::new();
-                        loop {
-                            let mut buf = [0u8; 1024];
-                            let mut n = nodeout.take(1024).read(&mut buf)?;
-                            justlogfox::log_trace!("read {} bytes from node", n);
-                            if n == 0 { break; }
-                            let mut end_text = false;
-                            if n >= 2 && buf[n-2] == 0x04 { // EOT
-                                end_text = true;
-                                n -= 2;
-                            } 
-                            hl.push_str(std::str::from_utf8(&buf[..n]).unwrap());
-                            if end_text { break; }
-                        }
-                        hl
+
                     } else {
                         html_escape::encode_text(&value).to_string()
                     };
@@ -477,7 +404,7 @@ impl MDNya {
                 htmler.end("ol")?;
             }
             Node::List(List { children, start: None, .. }) => {
-                self.simple_tag("ul", children, tags, htmler)?;
+                self.tag("ul", NO_ATTRS, children, tags, htmler)?;
             }
             Node::ListItem(ListItem { children, checked, .. }) => {
 
@@ -540,7 +467,7 @@ impl MDNya {
         Ok(())
     }
 
-    pub fn render(&mut self, md_source: &str, out: Box<dyn std::io::Write>) -> Result<DocumentMetaData, Box<dyn Error>> {
+    pub fn render(&mut self, md_source: &str, out: Box<dyn std::io::Write>) -> Result<DocumentMetaData> {
         justlogfox::log_trace!("rendering markdown source, {} bytes", (md_source.len()));
 
         let mut options = markdown::Options::gfm();
