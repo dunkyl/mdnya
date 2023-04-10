@@ -7,4 +7,6 @@ export default {
     topLevelAwait: true,
   },
   target: 'node',
+  cache: true,
+  mode: 'development',
 }
