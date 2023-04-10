@@ -7,7 +7,43 @@ pub struct HTMLWriter<'a> {
     pub section: Option<String>
 }
 
-pub const NO_ATTRS : &[(&str, Option<&str>); 0] = &[];
+pub const NO_ATTRS : &[(&str, Option<&str>)] = &[];
+
+pub trait Attributes {
+    fn write_attrs(&self, writer: &mut impl std::io::Write) -> std::io::Result<()>;
+}
+
+impl<K, V> Attributes for &[(K, Option<V>)]
+    where K: AsRef<str>,
+          V: AsRef<str> {
+    fn write_attrs(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+        for (k, v) in self.iter() {
+            let k = html_escape::encode_text_minimal(k.as_ref());
+            if let Some(v) = v {
+                write!(writer, " {k}=\"{}\"", html_escape::encode_quoted_attribute(v.as_ref()))?;
+            } else {
+                write!(writer, " {k}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<K, V> Attributes for &Vec<(K, Option<V>)>
+    where K: AsRef<str>,
+          V: AsRef<str> {
+    fn write_attrs(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+        self.as_slice().write_attrs(writer)
+    }
+}
+
+impl<K, V, const N: usize> Attributes for &[(K, Option<V>); N]
+    where K: AsRef<str>,
+          V: AsRef<str> {
+    fn write_attrs(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+        self.as_slice().write_attrs(writer)
+    }
+}
 
 impl<'a> HTMLWriter<'a> {
 
@@ -26,25 +62,18 @@ impl<'a> HTMLWriter<'a> {
         write!(self.writer, "{:amount$}", "", amount = self.indent_level*self.indent)
     }
 
-    fn write_tag(&mut self, before: &str, tag: &str, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)], after: &str) -> std::io::Result<()> {
+    fn write_tag(&mut self, before: &str, tag: &str, attrs: impl Attributes, after: &str) -> std::io::Result<()> {
         if !self.is_inline {
             writeln!(self.writer)?;
             self.write_indent()?;
         }
         write!(self.writer, "{}{tag}", before)?;
-        for (k, v) in attrs {
-            let k = html_escape::encode_text_minimal(k.as_ref());
-            if let Some(v) = v {
-                write!(self.writer, " {k}=\"{}\"", html_escape::encode_quoted_attribute(v.as_ref()))?;
-            } else {
-                write!(self.writer, " {k}")?;
-            }
-        }
+        attrs.write_attrs(&mut self.writer)?;
         write!(self.writer, "{}", after)?;
         Ok(())
     }
 
-    pub fn start(&mut self, tag: impl AsRef<str>, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)]) -> std::io::Result<()> {
+    pub fn start(&mut self, tag: impl AsRef<str>, attrs: impl Attributes) -> std::io::Result<()> {
         // if !self.is_inline && self.indent_level == 0 {
         //     writeln!(self.writer, "")?;
         // }
@@ -55,7 +84,7 @@ impl<'a> HTMLWriter<'a> {
         Ok(())
     }
 
-    pub fn self_close_tag(&mut self, tag: impl AsRef<str>, attrs: &[(impl AsRef<str>, Option<impl AsRef<str>>)]) -> std::io::Result<()> {
+    pub fn void_tag(&mut self, tag: impl AsRef<str>, attrs: impl Attributes) -> std::io::Result<()> {
         self.write_tag("<", tag.as_ref(), attrs, " />")?;
         if !self.is_inline {
             writeln!(self.writer)?;

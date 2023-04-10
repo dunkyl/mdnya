@@ -1,17 +1,31 @@
+use std::io::BufWriter;
+
 extern crate mdnya;
 
 #[test]
 fn test() {
-    let mut mdnya = mdnya::MdnyaOptions::new(false, Some("section".into()), 1, false);
-    let input = std::fs::read_to_string("../test.md").unwrap();
-    let output = Box::new(std::io::stdout());
-    let _ = mdnya.render(&input, output).unwrap();
+    let input = include_str!("../../test.md");
+    let mut output = BufWriter::new(vec![]);
+    let options = mdnya::MdnyaOptions::new(false, Some("section".into()), None, 1, true);
+    let _ = mdnya::render_markdown(input, &mut output, options).unwrap();
+    assert!(!output.buffer().is_empty());
 }
 
 #[test]
 fn readme() {
-    let mut mdnya = mdnya::MdnyaOptions::new(false, None, 1, false);
     let input = include_str!("../../readme.md");
-    let output = Box::new(std::io::stdout());
-    let _ = mdnya.render(input, output).unwrap();
+    let mut output = BufWriter::new(vec![]);
+    let options = mdnya::MdnyaOptions::new(false, Some("section".into()), None, 1, true);
+    let _ = mdnya::render_markdown(input, &mut output, options).unwrap();
+    assert!(!output.into_inner().unwrap().is_empty());
+}
+
+#[test]
+fn list() {
+    let input = "- a\n- b\n- c\n";
+    let mut output = BufWriter::new(vec![]);
+    let options = mdnya::MdnyaOptions::new(false, None, None, 1, true);
+    let _ = mdnya::render_markdown(input, &mut output, options).unwrap();
+    let expected = "\n<ul>\n    <li>a\n    <li>b\n    <li>c\n</ul>\n";
+    assert_eq!(output.into_inner().unwrap(), expected.as_bytes());
 }

@@ -10,53 +10,56 @@ mdnya README.md
 ```
 It would produce a file named `README.html` in the same directory.
 
-TODO: libary usage
-
 ## Quirks you might like
 
- - By default, `<p>` and `<li>` tags are not closed
- - li elements do not contain a `<p>` tag
- - indented code blocks are treaded instead as indented text
- - An option to wrap the elements between headers in a `<section>` or other tag
- - Headers get their content added as an id attribute, so you can link to them
-    - With some care to respect Razor syntax, for anything such as `@ViewData["Title"]`
- - TODO: parse with Razor to preserve all Razor syntax, such as @{ } blocks and @model directives
- - Language highlighters can be loaded dynamically as plugins
- - TODO: hashtags are formatted and can be scraped from the document
- - highlight configuration is pre-calculated at compile time for both statically linked and dynamically loaded syntax highlighters, which can speed up processing time for small documents considerably
+- By default, `<p>` and `<li>` tags are not closed
+- li elements do not contain a `<p>` tag
+- standalone images are not wrapped in a `<p>` tag
+- An option to wrap the elements between headers in a `<section>` or other tag
+- Headers get their content can added as an id attribute, so you can link to them
+- Fenced (```) code blocks with an @ are preserved as razor @{ } blocks
+- Hashtags are formatted and collected from the document
 
 ## Extensions
 
 Git markdown extensions are supported, such as:
- - checkboxes in lists
- - tables
+- Checkbox lists
+- Tables, including alignment
 
 In addition to the following:
- - Admonitions for code blocks
+- Tables can be captioned:
+```md
+| Example | Table |
+|:--------|:------|
+| 1       | 2     |
+| 3       | 4     |
 
-The syntax for admonitions is:
+: The above table is an example table.
+```
+
+- Admonitions:
 ````md
 ```{kind} An optional custom title
-    The text that shows inside!
+The text that shows inside!
 ```
 ````
 Where `kind` can be any class. The HTML div for this admonition will have the classes `admonition kind`.
+```html
+<div class="admonition kind">
+    <h3>An optional custom title</h3>
+    <p>The text that shows inside!
+</div>
+```
 
 ---
 
 ## Building
 
-Tree Sitter Language(s):
- - Markdown (REQUIRED) - [tree-sitter-markdown](https://github.com/ikatyang/tree-sitter-markdown) by ikatyang
- If building mdnya-cli, by default it statically links the following languages for syntax highlighting:
-    - C#
-    - Rust
-    - Bash
-    TODO: add more languages
-
-Other parsers will be used inside code blocks for highlighting. Clone each parser repo into the `mdnya-hl-langs/tree-sitters` directory.
-
-TODO: about static and dynamic linking of highlighters
+Highlighting is done with [Starry Night](https://github.com/wooorm/starry-night), which is a javascript library. It is bundled with webpack. Both building and running mdnya requires nodejs.
+```sh
+npm i
+webpack
+```
 
 ---
 
@@ -66,4 +69,4 @@ By default, the outputted HTML code will not close optional tags. This is to mak
 
 The output can be written to a specific file by using the `--output` flag, or to stdout by using the `--output stdout`.
 
-The elements surrounding the markdown content can be customized by using the `--wrap-tags` flag. The default value is none, and the elements are at the top level. The `--wrap-tags` flag can be passed multiple, comma separated values for nested elements. For example, `--wrap-tags div,article` will wrap the markdown content in a div, and then wrap the div in an article.
+The elements surrounding the markdown content can be customized by using the `--doc-tags` flag. The default value is none, and the elements are at the top level. The `--doc-tags` flag can be passed multiple, comma separated values for nested elements. For example, `--doc-tags div,article` will wrap the markdown content in a div, and then wrap the div in an article.

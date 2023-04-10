@@ -95,7 +95,6 @@ A way to make it not panic would be to use `println!()` instead of `panic!()`.
 Here is an indented block:
 
     hello, im an indented block ☺️
-        and i can be indented even more!
 
 This is very strange. [Red Link]
 

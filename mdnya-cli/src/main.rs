@@ -1,4 +1,4 @@
-use std::{path::PathBuf, io::Write, error::Error, collections::HashMap};
+use std::{path::PathBuf, io::Write};
 
 use mdnya::MdnyaOptions;
 use clap::Parser as clapParser;
@@ -10,27 +10,28 @@ struct Options {
     #[clap(name="input")]
     input_file: PathBuf,
 
-    /// HTML file to write to (default: <input>.html)
+    /// HTML file to write to (default: <input>.html).
+    /// Can be 'stdout' to write to stdout.
     #[clap(short, long="output")]
     output_file: Option<PathBuf>,
 
-    /// JSON file for metadata
-    #[clap(short, long="metadata")]
-    metadata_file: Option<PathBuf>,
+    /// Output JSON file for metadata. If passed without a value, the default is <input>.json
+    #[clap(short, long="meta")]
+    metadata_file: Option<Option<PathBuf>>,
 
     /// Include closing tags for <p> and <li> elements
     #[clap(short, long="close-all-tags")]
     close_all_tags: bool,
 
     /// Surround document in tags, such as 'html,body' or article. Comma separated
-    #[clap(long="wrap-tags", value_parser,  value_delimiter = ',')]
-    wrap_document: Option<Vec<String>>,
+    #[clap(long="doc-tags", value_parser,  value_delimiter = ',')]
+    document_tags: Option<Vec<String>>,
 
     /// Surround text after each heading in a tag
-    #[clap(long="wrap-sections")]
-    wrap_sections: Option<String>,
+    #[clap(long="section-tags")]
+    section_tags: Option<String>,
 
-    /// Show times
+    /// Show extra information
     #[clap(short, long)]
     verbose: bool,
 
@@ -45,19 +46,17 @@ struct Options {
     /// Don't add id attributes to headings
     #[clap(long="no-ids")]
     no_ids: bool,
-
-    // TODO: Add option for yielding tags (#blah) present in the document
-    //  ^ Like in Obsidian
-    /// Don't add id attributes to headings
-    #[clap(long="detect-tags")]
-    detect_tags: bool,
 }
 
 fn main() -> mdnya::Result<()> {
 
     let opts = Options::parse();
 
-    justlogfox::set_log_level(justlogfox::LogLevel::Debug);
+    if opts.verbose {
+        justlogfox::set_log_level(justlogfox::LogLevel::Trace);
+    } else {
+        justlogfox::set_log_level(justlogfox::LogLevel::Warn);
+    }
 
     justlogfox::set_crate_color!(justlogfox::CssColors::Pink);
 
@@ -84,18 +83,21 @@ fn main() -> mdnya::Result<()> {
     let load_start = std::time::Instant::now();
 
     let source_code = std::fs::read_to_string(&opts.input_file)?;
-    let highligher = Box::new(mdnya::StarryHighlighter::new(HashMap::new()));
-    let options = MdnyaOptions::new(opts.close_all_tags, opts.wrap_sections, opts.heading_level, !opts.no_ids);
+    let options = 
+        MdnyaOptions::new(opts.close_all_tags, opts.section_tags, opts.document_tags, opts.heading_level, !opts.no_ids)
+        .with_starry_night();
 
     justlogfox::log_debug!("setup took {:?}", (load_start.elapsed()));
 
     let render_start = std::time::Instant::now();
 
-    let meta = mdnya::render_markdown(source_code, &mut output, options, highligher)?;
+    let meta = mdnya::render_markdown(source_code, &mut output, options)?;
 
     justlogfox::log_debug!("mdnya render() took {:?}", (render_start.elapsed()));
 
     if let Some(path) = &opts.metadata_file {
+        let default = opts.input_file.with_extension("json");
+        let path = path.as_ref().unwrap_or(&default);
         let json = serde_json::to_string_pretty(&meta)?;
         std::fs::write(path, json)?;
     }
