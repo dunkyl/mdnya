@@ -2,6 +2,19 @@
 
 Convert one markdown file to one html file.
 
+## Install
+
+TODO: build script for webpack\
+TODO: crate
+
+CLI
+```sh
+git clone git@github.com:dunkyl/mdnya.git
+npm i
+webpack
+cargo install --path .
+```
+
 ## Usage
 
 mdnya is a command line tool. You can use it like this:

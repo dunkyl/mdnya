@@ -84,11 +84,16 @@ impl<'a> HTMLWriter<'a> {
         Ok(())
     }
 
-    pub fn void_tag(&mut self, tag: impl AsRef<str>, attrs: impl Attributes) -> std::io::Result<()> {
+    pub fn void_tag(&mut self, tag: impl AsRef<str>, attrs: impl Attributes, not_inline: bool) -> std::io::Result<()> {
+        let inline_before = self.is_inline;
+        if not_inline {
+            self.is_inline = false;
+        }
         self.write_tag("<", tag.as_ref(), attrs, " />")?;
         if !self.is_inline {
             writeln!(self.writer)?;
         }
+        self.is_inline = inline_before;
         Ok(())
     }
 
@@ -97,7 +102,7 @@ impl<'a> HTMLWriter<'a> {
             self.indent_level -= 1;
         }
         let tag = tag.as_ref();
-        if self.close_all_tags || !["p", "li"].contains(&tag) {
+        if self.close_all_tags || !["p", "li", "br"].contains(&tag) {
             self.write_tag("</", tag, NO_ATTRS, ">")?;
         }
         if !self.is_inline && self.indent_level == 0 {

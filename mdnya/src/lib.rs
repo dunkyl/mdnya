@@ -191,7 +191,7 @@ impl<'a> MdnyaRenderer<'a> {
                 let mut attrs = vec![("type", Some("checkbox")), ("disabled", None)];
                 if *is_checked { attrs.push(("checked", None)) }
 
-                self.html.void_tag("input", &attrs)?;
+                self.html.void_tag("input", &attrs, false)?;
             }
 
             if li_nodes.len() == 1 {
@@ -375,12 +375,12 @@ impl<'a> MdnyaRenderer<'a> {
     fn render_node(&mut self, node: &Node) -> Result<()> {
         match node {
             // terminal
-            Node::Break(_) => self.html.void_tag("br", NO_ATTRS)?,
-            Node::ThematicBreak(_) => self.html.void_tag("hr", NO_ATTRS)?,
+            Node::Break(_) => self.html.void_tag("br", NO_ATTRS, true)?,
+            Node::ThematicBreak(_) => self.html.void_tag("hr", NO_ATTRS, true)?,
             Node::Html(Html { value, .. }) => 
                 self.html.write_html(format!("\n{value}\n"))?,
             Node::Image(Image { url, alt, .. }) => 
-                self.html.void_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))])?,
+                self.html.void_tag("img", &[("src", Some(&url)), ("alt", Some(&alt))], false)?,
             
 
             // simple
