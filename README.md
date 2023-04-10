@@ -1,4 +1,4 @@
-# MDNya
+# mdnya
 
 Convert one markdown file to one html file.
 
@@ -6,9 +6,23 @@ Convert one markdown file to one html file.
 
 mdnya is a command line tool. You can use it like this:
 ```sh
-mdnya README.md
+mdnya README.md --meta --output basic.md.html
 ```
-It would produce a file named `README.html` in the same directory.
+It would produce a file named `basic.md.html` and one named `README.json` in the same directory.
+
+```json
+{ // README.json as generated for mdnya's readme
+  "title": "mdnya",
+  "tags": [
+    "hashtags"
+  ],
+  "frontmatter": {}
+}
+```
+
+## Requirements
+
+- Nodejs 14 or higher
 
 ## Quirks you might like
 
@@ -18,7 +32,8 @@ It would produce a file named `README.html` in the same directory.
 - An option to wrap the elements between headers in a `<section>` or other tag
 - Headers get their content can added as an id attribute, so you can link to them
 - Fenced (```) code blocks with an @ are preserved as razor @{ } blocks
-- Hashtags are formatted and collected from the document
+- Hashtags are formatted and collected from the document. #hashtags are added to the `tags` field in the metadata file.
+- Frontmatter is parsed as YAML and added to the `frontmatter` field in the metadata file.
 
 ## Extensions
 

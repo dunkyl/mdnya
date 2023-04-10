@@ -220,7 +220,7 @@ impl<'a> MdnyaRenderer<'a> {
         let escaped = html_escape::encode_text(text);
 
         let tagged_text = TAG_RE.replace(&escaped, |caps: &regex::Captures| {
-            let tag = caps[0].to_string();
+            let tag = caps[0][1..].to_string();
             let tagged_tag = format!("<span class=\"tag\">{}</span>", tag);
             self.meta.tags.push(tag);
             tagged_tag
