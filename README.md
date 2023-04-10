@@ -10,7 +10,7 @@ mdnya README.md --meta --output basic.md.html
 ```
 It would produce a file named `basic.md.html` and one named `README.json` in the same directory.
 
-```json
+```jsonc
 { // README.json as generated for mdnya's readme
   "title": "mdnya",
   "tags": [
