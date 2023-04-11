@@ -33,6 +33,14 @@ It would produce a file named `basic.md.html` and one named `README.json` in the
 }
 ```
 
+Specifying a directory as input will convert all markdown files in that directory.
+
+Outputs may also be specified as a directory.
+
+```sh
+
+Startup time may be significant, 500ms or more, for code highlighting. Consider specifying an ouput directory to only startup once for many files. Highlighting is lazy and won't delay any files without code blocks.
+
 ## Requirements
 
 - Nodejs 14 or higher
