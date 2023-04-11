@@ -26,6 +26,6 @@ fn list() {
     let mut output = BufWriter::new(vec![]);
     let options = mdnya::MdnyaOptions::new(false, None, None, 1, true);
     let _ = mdnya::render_markdown(input, &mut output, options).unwrap();
-    let expected = "\n<ul>\n    <li>a\n    <li>b\n    <li>c\n</ul>\n";
-    assert_eq!(output.into_inner().unwrap(), expected.as_bytes());
+    let expected = "<ul>\n    <li>a\n    <li>b\n    <li>c\n</ul>\n";
+    assert_eq!(String::from_utf8_lossy(&output.into_inner().unwrap()).to_string().as_str(), expected);
 }

@@ -287,7 +287,9 @@ impl<'a> MdnyaRenderer<'a> {
             let title_html = String::from_utf8(tempbuf).unwrap();
             justlogfox::log_debug!("captured title html: {}", title_html);
 
+            self.html.start(&tag, &attrs)?;
             self.html.write_html(&title_html)?;
+            self.html.end(&tag)?;
             self.meta.title = Some(title_html);
         }
         else {
@@ -303,7 +305,6 @@ impl<'a> MdnyaRenderer<'a> {
 
     fn render_codeblock(&mut self, node: &Code) -> Result<()> {
         let Code { value, meta, lang, .. } = node;
-        if meta.is_some() { todo!("meta was {:?}", meta); }
         let lang = lang.as_deref();
 
         justlogfox::log_trace!("code: {:?}\n{}", lang, value);
@@ -328,18 +329,15 @@ impl<'a> MdnyaRenderer<'a> {
             };
 
         lazy_static! {
-            static ref RE_ADMONITION: Regex = Regex::new(r"\{(?P<class>\w+)\}\w*((?P<title>\w[\w\s]*))?").unwrap();
+            static ref RE_ADMONITION: Regex = Regex::new(r"\{(\w+)\}").unwrap();
         }
         let mut attrs = vec![];
         let code =
             if let Some(info) = lang {
                 let adm_match = RE_ADMONITION.captures(info);
                 if let Some(captures) = adm_match {
-                    let class = captures.name("class").unwrap().as_str();
-                    let title = captures.name("title")
-                                        .map(|m| m.as_str())
-                                        .map(ToString::to_string)
-                                        .unwrap_or_else(|| to_title_case(class));
+                    let class = &captures[1];
+                    let title = meta.clone().unwrap_or_else(|| to_title_case(class));
                     let class_attr = format!("admonition {class}");
                     self.html.start("div", &[("class", Some(&class_attr))])?;
                     self.tag_wrap_text_inline("h3", NO_ATTRS, &title)?;

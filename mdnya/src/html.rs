@@ -4,7 +4,8 @@ pub struct HTMLWriter<'a> {
     pub indent_level: usize,
     pub close_all_tags: bool,
     pub writer: Box<dyn std::io::Write + 'a>,
-    pub section: Option<String>
+    pub section: Option<String>,
+    pub is_first_tag: bool
 }
 
 pub const NO_ATTRS : &[(&str, Option<&str>)] = &[];
@@ -54,7 +55,8 @@ impl<'a> HTMLWriter<'a> {
             indent_level: 0,
             close_all_tags,
             writer,
-            section: None
+            section: None,
+            is_first_tag: true
         }
     }
 
@@ -63,10 +65,14 @@ impl<'a> HTMLWriter<'a> {
     }
 
     fn write_tag(&mut self, before: &str, tag: &str, attrs: impl Attributes, after: &str) -> std::io::Result<()> {
-        if !self.is_inline {
+        if !self.is_inline && !self.is_first_tag {
             writeln!(self.writer)?;
             self.write_indent()?;
+            
         }
+
+        self.is_first_tag = false;
+
         write!(self.writer, "{}{tag}", before)?;
         attrs.write_attrs(&mut self.writer)?;
         write!(self.writer, "{}", after)?;

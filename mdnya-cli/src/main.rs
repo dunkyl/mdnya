@@ -6,16 +6,16 @@ use clap::Parser as clapParser;
 #[derive(clapParser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Options {
-    /// Markdown file to convert
+    /// Markdown file or directory to convert
     #[clap(name="input")]
     input_file: PathBuf,
 
-    /// HTML file to write to (default: <input>.html).
+    /// HTML file or directory to write to (default: <input>.html).
     /// Can be 'stdout' to write to stdout.
     #[clap(short, long="output")]
     output_file: Option<PathBuf>,
 
-    /// Output JSON file for metadata. If passed without a value, the default is <input>.json
+    /// Output JSON file or directory for metadata. If passed without a value, the default is <input>.json
     #[clap(short, long="meta")]
     metadata_file: Option<Option<PathBuf>>,
 
@@ -49,7 +49,7 @@ struct Options {
 }
 
 fn convert_one(input: &PathBuf, output: &mut Box<dyn Write>, meta_output: Option<Box<dyn Write>>, options: &MdnyaOptions) -> mdnya::Result<()> {
-    let source_code = std::fs::read_to_string(input)?;
+    let source_code = std::fs::read_to_string(input)?.replace('\r', "");
     let meta = mdnya::render_markdown(source_code, output, options.clone())?;
     if let Some(mut meta_output) = meta_output {
         let json = serde_json::to_string_pretty(&meta)?;
