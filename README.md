@@ -82,7 +82,7 @@ The text that shows inside!
 Where `kind` can be any class. The HTML div for this admonition will have the classes `admonition kind`.
 ```html
 <div class="admonition kind">
-    <h3>An optional custom title</h3>
+    <div class="admonition-title">An optional custom title</div>
     <p>The text that shows inside!
 </div>
 ```

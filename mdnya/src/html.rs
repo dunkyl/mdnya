@@ -119,8 +119,12 @@ impl<'a> HTMLWriter<'a> {
 
     pub fn enter_inline(&mut self) -> std::io::Result<()> {
         self.is_inline = true;
-        writeln!(self.writer)?;
-        self.write_indent()
+        if !self.is_first_tag {
+            writeln!(self.writer)?;
+            self.write_indent()?;
+        }
+        self.is_first_tag = false;
+        Ok(())
     }
 
     pub fn exit_inline(&mut self) -> std::io::Result<()> {

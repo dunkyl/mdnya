@@ -70,8 +70,74 @@ impl<'a> StarryHighlighter<'a> {
 
 }
 
+const HL_NAMES: &[&str] = &[
+    "attribute",
+    "constant",
+    "function.builtin",
+    "function",
+    "keyword",
+    "operator",
+    "property",
+    "punctuation",
+    "punctuation.bracket",
+    "punctuation.delimiter",
+    "string",
+    "string.special",
+    "tag",
+    "type",
+    "type.builtin",
+    "variable",
+    "variable.builtin",
+    "variable.parameter",
+    "number",
+    "comment",
+];
+
+const HL_CLASSES: &[&str] = &[
+    "attribute",
+    "constant",
+    "function-builtin",
+    "function",
+    "keyword",
+    "operator",
+    "property",
+    "punctuation",
+    "punctuation-bracket",
+    "punctuation-delimiter",
+    "string",
+    "string-special",
+    "tag",
+    "type",
+    "type-builtin",
+    "variable",
+    "variable-builtin",
+    "variable-parameter",
+    "number",
+    "comment",
+];
+
 impl<'a> Highlighter for StarryHighlighter<'a> {
     fn highlight(&self, lang: &str, code: &str) -> Result<String> {
+
+        if ["C#", "csharp", "cs"].contains(&lang) {
+            use tree_sitter_highlight::*;
+            use tree_sitter_c_sharp::*;
+
+            let cs = language();
+            let mut cfg = HighlightConfiguration::new(
+                        cs, HIGHLIGHT_QUERY, "", "")
+                      .expect("upstream query is valid");
+            cfg.configure(HL_NAMES);
+            let mut hl = Highlighter::new();
+            let events = hl.highlight(&cfg, code.as_bytes(), None, |_| None).unwrap();
+            let mut render = HtmlRenderer::new();
+            render.render(events, code.as_bytes(), &|hl| HL_CLASSES[hl.0].as_bytes()).unwrap();
+            return Ok(String::from_utf8(render.html).unwrap());
+        }
+
+
+
+
         justlogfox::log_trace!("try highlight language: {} ", lang);
         self.wait_for_starry();
 

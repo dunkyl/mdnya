@@ -35,7 +35,8 @@ pub struct MdnyaOptions {
     heading_level: u8,
     add_header_ids: bool,
     no_code_lines: bool,
-    highlighter: Option<Arc<dyn starry::Highlighter>>
+    highlighter: Option<Arc<dyn starry::Highlighter>>,
+    razor: bool,
 }
 
 struct MdnyaRenderer<'a> {
@@ -75,7 +76,8 @@ impl MdnyaOptions {
             heading_level,
             add_header_ids,
             no_code_lines: false,
-            highlighter: None
+            highlighter: None,
+            razor: true,
         }
     }
 
@@ -231,11 +233,26 @@ impl<'a> MdnyaRenderer<'a> {
     }
 
     fn render_paragraph(&mut self, node: &Paragraph) -> Result<()> {
+        lazy_static!(
+            static ref RAZOR_STATEMENT_RE: Regex = Regex::new(r"^\s*@\w+").unwrap();
+        );
+
+        let first = node.children.first().unwrap();
+
+        // TODO: when x && let Pattern stabilized, here
+        if self.options.razor {
+            if let Node::Text(Text { value, .. }) = first {
+                if RAZOR_STATEMENT_RE.is_match(value) {
+                    self.html.write_html(value)?;
+                    self.html.write_html("\n")?;
+                    return Ok(());
+                }
+            }
+        }
         // if it's just an image, don't wrap it in a p tag
         if node.children.len() == 1 { 
-            let only = node.children.first().unwrap();
-            if let Node::Image(_) = only { 
-                self.render_node(only)?;
+            if let Node::Image(_) = first { 
+                self.render_node(first)?;
                 return Ok(());
             }
         }
@@ -287,9 +304,11 @@ impl<'a> MdnyaRenderer<'a> {
             let title_html = String::from_utf8(tempbuf).unwrap();
             justlogfox::log_debug!("captured title html: {}", title_html);
 
+            self.html.enter_inline()?;
             self.html.start(&tag, &attrs)?;
             self.html.write_html(&title_html)?;
             self.html.end(&tag)?;
+            self.html.exit_inline()?;
             self.meta.title = Some(title_html);
         }
         else {
@@ -309,11 +328,11 @@ impl<'a> MdnyaRenderer<'a> {
 
         justlogfox::log_trace!("code: {:?}\n{}", lang, value);
 
-        
-        if Some("@") == lang { // special case for razor code block
+        // special case for razor code block
+        if Some("@") == lang && self.options.razor { 
             self.html.write_html("@{\n")?;
             self.html.write_html(value)?;
-            self.html.write_html("\n}")?;
+            self.html.write_html("\n}\n\n")?;
             return Ok(());
         }
 
@@ -340,7 +359,7 @@ impl<'a> MdnyaRenderer<'a> {
                     let title = meta.clone().unwrap_or_else(|| to_title_case(class));
                     let class_attr = format!("admonition {class}");
                     self.html.start("div", &[("class", Some(&class_attr))])?;
-                    self.tag_wrap_text_inline("h3", NO_ATTRS, &title)?;
+                    self.tag_wrap_text_inline("div", &[("class", Some("admonition-title"))], &title)?;
                     self.tag_wrap_text_inline("p", NO_ATTRS, value)?;
                     self.html.end("div")?;
                     return Ok(());
@@ -363,9 +382,11 @@ impl<'a> MdnyaRenderer<'a> {
         let code = add_code_lines(&code);
 
         self.html.enter_inline()?;
-        self.html.start("pre><code", &attrs)?;
+        self.html.start("pre", &attrs)?;
+        self.html.start("code", NO_ATTRS)?;
         self.html.write_html(code)?;
-        self.html.end("code></pre")?;
+        self.html.end("code")?;
+        self.html.end("pre")?;
         self.html.exit_inline()?;
         Ok(())
     }
