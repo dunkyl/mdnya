@@ -35,9 +35,11 @@ It would produce a file named `basic.md.html` and one named `README.json` in the
 
 Specifying a directory as input will convert all markdown files in that directory.
 
-Outputs may also be specified as a directory.
+Outputs may also be specified as a directory:
 
 ```sh
+mdnya . --output html/
+```
 
 Startup time may be significant, 500ms or more, for code highlighting. Consider specifying an ouput directory to only startup once for many files. Highlighting is lazy and won't delay any files without code blocks.
 
@@ -51,8 +53,8 @@ Startup time may be significant, 500ms or more, for code highlighting. Consider 
 - li elements do not contain a `<p>` tag
 - standalone images are not wrapped in a `<p>` tag
 - An option to wrap the elements between headers in a `<section>` or other tag
-- Headers get their content can added as an id attribute, so you can link to them
-- Fenced (```) code blocks with an @ are preserved as razor @{ } blocks
+- Headers get their content added as an id attribute, so you can link to them
+- Fenced (```) code blocks with an @ in the first position are preserved as razor @{ } blocks
 - Hashtags are formatted and collected from the document. #hashtags are added to the `tags` field in the metadata file.
 - Frontmatter is parsed as YAML and added to the `frontmatter` field in the metadata file.
 
